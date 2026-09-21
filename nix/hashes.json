@@ -5,7 +5,7 @@
     "aarch64-darwin": "sha256-Ne0sqao1EcZsZFWjUEup/EOqYE/vJa7L6DTmu/SEzX4="
   },
   "schema-deps": {
-    "x86_64-linux": "sha256-FvAPz72MuI1H06GyJYSEGhiSXFI9JeIBL+7g5Zu665Q=",
+    "x86_64-linux": "sha256-0qPWaAk+xLxRpS2CRpuiAKPwsw8q9jeSBh2bZbSJ0dY=",
     "aarch64-linux": "sha256-yswnE7MnKdbnTB4KuQVHgvATg8ckYHvDdEQ1qzsqJOI=",
     "aarch64-darwin": "sha256-D9x3CigJv7ucdfvUok68Rr6vjnoV0nu7CqINpPkYho0="
   }
