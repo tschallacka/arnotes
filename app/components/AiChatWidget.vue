@@ -139,13 +139,13 @@ function openTarget(m: ChatMessage) {
   <!-- Floating launcher -->
   <button
     v-if="!open"
-    class="fixed bottom-6 right-6 z-60 flex size-13 cursor-pointer items-center justify-center rounded-full bg-primary text-inverted shadow-lg shadow-primary/25 transition-all hover:scale-105 hover:shadow-xl hover:shadow-primary/30 active:scale-95 max-lg:bottom-20"
+    class="fixed bottom-5 right-5 z-60 flex size-10 cursor-pointer items-center justify-center rounded-full border border-primary/30 bg-elevated text-primary shadow-md transition-all hover:border-primary/60 hover:bg-primary/10 active:scale-95 max-lg:bottom-20"
     aria-label="Open Arnai chat"
     @click="toggle"
   >
     <UIcon
       name="i-lucide-sparkles"
-      class="size-6"
+      class="size-4.5"
     />
   </button>
 
@@ -153,17 +153,17 @@ function openTarget(m: ChatMessage) {
   <div
     v-else
     class="fixed z-60 flex flex-col overflow-hidden border border-default bg-default shadow-2xl
-           inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl
-           sm:inset-x-auto sm:bottom-6 sm:right-6 sm:max-h-[calc(100dvh-3rem)] sm:rounded-xl max-lg:sm:bottom-20"
+           inset-x-0 bottom-0 max-h-[85dvh] rounded-t-2xl
+           sm:inset-x-auto sm:bottom-5 sm:right-5 sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl max-lg:sm:bottom-20"
     :class="expanded ? 'sm:w-[760px] sm:h-[calc(100dvh-6rem)]' : 'sm:w-[420px]'"
     style="max-width: 100vw"
   >
     <!-- Header -->
-    <div class="flex shrink-0 items-center gap-2.5 border-b border-default px-4 py-3">
-      <div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+    <div class="flex shrink-0 items-center gap-2.5 border-b border-default/60 px-4 py-2.5">
+      <div class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
         <UIcon
           name="i-lucide-sparkles"
-          class="size-4.5"
+          class="size-4"
         />
       </div>
       <div class="min-w-0 flex-1">
@@ -220,7 +220,7 @@ function openTarget(m: ChatMessage) {
     <!-- Messages -->
     <div
       ref="scrollEl"
-      class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
+      class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
       @scroll="onScroll"
     >
       <!-- Empty state -->
@@ -228,10 +228,10 @@ function openTarget(m: ChatMessage) {
         v-if="!hasContent && !busy"
         class="flex h-full flex-col items-center justify-center gap-1 px-4 text-center"
       >
-        <div class="mb-2 flex size-11 items-center justify-center rounded-xl bg-primary/15 text-primary">
+        <div class="mb-2 flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
           <UIcon
             name="i-lucide-sparkles"
-            class="size-6"
+            class="size-5"
           />
         </div>
         <p class="text-sm font-medium text-default">
@@ -267,7 +267,7 @@ function openTarget(m: ChatMessage) {
           <button
             v-for="s in SUGGESTIONS"
             :key="s.label"
-            class="flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-default bg-elevated/40 px-3 py-2.5 text-left text-xs text-default transition-colors hover:bg-elevated"
+            class="flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-default/60 px-3 py-2.5 text-left text-xs text-default transition-colors hover:bg-elevated/60"
             @click="useSuggestion(s.label)"
           >
             <UIcon
@@ -288,7 +288,7 @@ function openTarget(m: ChatMessage) {
           v-if="m.role === 'user'"
           class="flex justify-end"
         >
-          <div class="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-sm text-inverted">
+          <div class="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-sm text-inverted">
             {{ m.content }}
           </div>
         </div>
@@ -299,7 +299,7 @@ function openTarget(m: ChatMessage) {
           class="flex"
         >
           <button
-            class="inline-flex max-w-full items-center gap-1.5 rounded-full border border-default bg-elevated/50 px-2.5 py-1 text-xs transition-colors hover:bg-elevated"
+            class="inline-flex max-w-full items-center gap-1.5 rounded-full border border-default/60 px-2.5 py-1 text-xs transition-colors hover:bg-elevated/60"
             :class="[
               m.targetId ? 'cursor-pointer hover:text-default' : 'cursor-default',
               m.error ? 'text-error' : 'text-muted'
@@ -328,7 +328,7 @@ function openTarget(m: ChatMessage) {
           <!-- Reasoning (thinking models) -->
           <details
             v-if="m.reasoning?.trim()"
-            class="group rounded-lg border border-default bg-elevated/30"
+            class="group rounded-lg border border-default/60"
           >
             <summary class="flex cursor-pointer select-none items-center gap-1.5 px-3 py-1.5 text-xs text-muted">
               <UIcon
@@ -395,10 +395,10 @@ function openTarget(m: ChatMessage) {
 
     <!-- Composer -->
     <div
-      class="shrink-0 border-t border-default p-3"
+      class="shrink-0 p-3 pt-1"
       style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))"
     >
-      <div class="flex items-end gap-2 rounded-xl border border-default bg-elevated/40 px-3 py-2 transition-colors focus-within:border-primary/60">
+      <div class="flex items-end gap-2 rounded-xl border border-default bg-elevated/40 px-3 py-2 transition-colors focus-within:border-primary/50">
         <textarea
           ref="inputEl"
           v-model="input"
@@ -427,9 +427,6 @@ function openTarget(m: ChatMessage) {
           @click="submit"
         />
       </div>
-      <p class="mt-1.5 px-1 text-[10px] text-muted">
-        Arnai can search, create and edit your notes.
-      </p>
     </div>
   </div>
 </template>
