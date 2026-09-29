@@ -92,7 +92,7 @@ function switchMode(mode: AppMode) {
 
     <!-- Notes / Projects mode toggle -->
     <div class="shrink-0 px-3 pb-2">
-      <div class="grid grid-cols-3 gap-1 rounded-lg bg-elevated/60 p-1">
+      <div class="grid grid-cols-2 gap-1 rounded-lg bg-elevated/60 p-1">
         <button
           v-for="mode in MODES"
           :key="mode.key"
