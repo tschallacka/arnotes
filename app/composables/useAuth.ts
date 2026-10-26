@@ -22,6 +22,10 @@ export function useAuth() {
     await authClient.signIn.social({ provider: 'github', callbackURL: '/note' })
   }
 
+  async function signInWithGoogle() {
+    await authClient.signIn.social({ provider: 'google', callbackURL: '/note' })
+  }
+
   async function signOut() {
     await authClient.signOut()
     window.location.href = '/login'
@@ -32,6 +36,7 @@ export function useAuth() {
     isPending,
     signInWithDiscord,
     signInWithGitHub,
+    signInWithGoogle,
     signOut
   }
 }

@@ -18,6 +18,7 @@ export default defineNuxtConfig({
     public: {
       discordEnabled: false,
       githubEnabled: false,
+      googleEnabled: false,
       allowSignUp: true
     }
   },

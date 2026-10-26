@@ -39,10 +39,13 @@ let
     NUXT_PUBLIC_ALLOW_SIGN_UP = boolToStr cfg.allowSignUp;
     NUXT_PUBLIC_DISCORD_ENABLED = boolToStr cfg.discord.enable;
     NUXT_PUBLIC_GITHUB_ENABLED = boolToStr cfg.github.enable;
+    NUXT_PUBLIC_GOOGLE_ENABLED = boolToStr cfg.google.enable;
     DISCORD_CLIENT_ID = cfg.discord.clientId;
     DISCORD_CLIENT_SECRET = cfg.discord.clientSecret;
     GITHUB_CLIENT_ID = cfg.github.clientId;
     GITHUB_CLIENT_SECRET = cfg.github.clientSecret;
+    GOOGLE_CLIENT_ID = cfg.google.clientId;
+    GOOGLE_CLIENT_SECRET = cfg.google.clientSecret;
     HOST = cfg.host;
     PORT = toString cfg.port;
     HOME = cfg.stateDir;
@@ -163,6 +166,21 @@ in
     };
 
     github = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+      };
+      clientId = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+      clientSecret = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+    };
+
+    google = {
       enable = lib.mkOption {
         type = lib.types.bool;
         default = false;

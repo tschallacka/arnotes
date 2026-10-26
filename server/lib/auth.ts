@@ -8,6 +8,8 @@ const discordEnabled = process.env.NUXT_PUBLIC_DISCORD_ENABLED === 'true'
   && Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET)
 const githubEnabled = process.env.NUXT_PUBLIC_GITHUB_ENABLED === 'true'
   && Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)
+const googleEnabled = process.env.NUXT_PUBLIC_GOOGLE_ENABLED === 'true'
+  && Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -54,6 +56,14 @@ export const auth = betterAuth({
           github: {
             clientId: process.env.GITHUB_CLIENT_ID!,
             clientSecret: process.env.GITHUB_CLIENT_SECRET!
+          }
+        }
+      : {}),
+    ...(googleEnabled
+      ? {
+          google: {
+            clientId: process.env.GOOGLE_CLIENT_ID!,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!
           }
         }
       : {})

@@ -18,7 +18,7 @@ Arnotes is a fast, self-hosted note-taking app organized around inline tags, wit
 - Markdown import and export
 - Soft deletion and trash recovery
 - Private notes and boards, each with an optional expiring public link
-- Email/password accounts with optional Discord and GitHub OAuth
+- Email/password accounts with optional Discord, GitHub and Google OAuth
 - Bring-your-own-key OpenRouter integration; AI is entirely optional
 - Kanban boards for projects: columns, drag-and-drop tasks, labels, rich-text descriptions, and a log of updates per task, written in a narrow inline Markdown (bold, italic, code, strike, highlight, links)
 - Live updates, so a change made by an AI agent, a teammate, or another tab shows up without a reload — on shared links too
@@ -112,6 +112,9 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `NUXT_PUBLIC_GITHUB_ENABLED` | `false` | Show and enable GitHub OAuth sign-in |
 | `GITHUB_CLIENT_ID` | empty | GitHub application client ID |
 | `GITHUB_CLIENT_SECRET` | empty | GitHub application client secret |
+| `NUXT_PUBLIC_GOOGLE_ENABLED` | `false` | Show and enable Google OAuth sign-in |
+| `GOOGLE_CLIENT_ID` | empty | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | empty | Google OAuth client secret |
 
 To enable Discord, set all three Discord variables and register this redirect URL in the Discord developer portal:
 
@@ -124,6 +127,14 @@ To enable GitHub, set all three GitHub variables and register this authorization
 ```text
 https://notes.example.com/api/auth/callback/github
 ```
+
+To enable Google, set all three Google variables and create a *Web application* OAuth client under Google Auth Platform → Clients in the Google Cloud Console, with this authorized redirect URI:
+
+```text
+https://notes.example.com/api/auth/callback/google
+```
+
+Google accepts plain `http` redirect URIs only for `localhost`, so `http://localhost:3000/api/auth/callback/google` works for local development. Other hosts, including `*.localhost` names and LAN IP addresses, need HTTPS on a public domain. While the consent screen is in *Testing*, only the Google accounts listed as test users can sign in.
 
 The `NUXT_PUBLIC_*_ENABLED` switches are used by both the server and client, so the same configuration works with native development and Docker Compose.
 
@@ -206,7 +217,7 @@ Key options (`services.arnotes.*`):
 | `betterAuth.url` | `http://localhost:3000` | Public origin used by authentication |
 | `betterAuth.secretFile` | generated | Read a stable 32+ char secret from a file |
 | `allowSignUp` | `true` | Allow new email/password accounts |
-| `discord.enable` / `github.enable` | `false` | Enable OAuth sign-in; set `clientId`/`clientSecret` |
+| `discord.enable` / `github.enable` / `google.enable` | `false` | Enable OAuth sign-in; set `clientId`/`clientSecret` |
 | `environment` | `{}` | Extra environment variables |
 | `openFirewall` | `false` | Open the app port in the firewall |
 
@@ -347,7 +358,7 @@ Database structure is defined only in `server/db/schema.ts`. After changing it, 
 
 - Nuxt 4 and Vue 3 provide the client and Nitro API server.
 - Nuxt UI and Tailwind CSS provide the interface.
-- Better Auth handles email/password sessions and optional Discord and GitHub OAuth.
+- Better Auth handles email/password sessions and optional Discord, GitHub and Google OAuth.
 - Drizzle ORM and PostgreSQL store application data.
 - Uploaded files are stored under `data/attachments` and mounted as a Docker volume.
 - OpenRouter powers optional user-configured AI actions.

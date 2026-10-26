@@ -4,9 +4,10 @@ definePageMeta({ middleware: [] }) // skip auth middleware on this page
 useSeoMeta({ title: 'Sign in' })
 
 const config = useRuntimeConfig()
-const { signInWithDiscord, signInWithGitHub } = useAuth()
+const { signInWithDiscord, signInWithGitHub, signInWithGoogle } = useAuth()
 const isDiscordEnabled = computed(() => String(config.public.discordEnabled) === 'true')
 const isGitHubEnabled = computed(() => String(config.public.githubEnabled) === 'true')
+const isGoogleEnabled = computed(() => String(config.public.googleEnabled) === 'true')
 const isSignUpAllowed = computed(() => String(config.public.allowSignUp) === 'true')
 const mode = ref<'sign-in' | 'sign-up'>('sign-in')
 const name = ref('')
@@ -128,7 +129,7 @@ function switchMode() {
         </button>
       </div>
 
-      <template v-if="isDiscordEnabled || isGitHubEnabled">
+      <template v-if="isDiscordEnabled || isGitHubEnabled || isGoogleEnabled">
         <div class="flex items-center gap-3 text-xs text-zinc-600">
           <div class="h-px flex-1 bg-zinc-800" />
           or
@@ -163,6 +164,21 @@ function switchMode() {
             class="size-5"
           />
           Continue with GitHub
+        </UButton>
+        <UButton
+          v-if="isGoogleEnabled"
+          block
+          size="lg"
+          color="neutral"
+          variant="outline"
+          class="gap-2"
+          @click="signInWithGoogle"
+        >
+          <UIcon
+            name="i-simple-icons-google"
+            class="size-5"
+          />
+          Continue with Google
         </UButton>
       </template>
     </div>
