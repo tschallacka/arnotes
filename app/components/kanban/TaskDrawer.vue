@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { tagChipClass, columnDotClass } from '~/utils/tagColors'
+import { columnDotAttrs } from '~/utils/tagColors'
 import { format } from 'date-fns'
 import { relativeTime } from '~/composables/useRelativeTime'
+import type { TaskComment } from '~/composables/useProjects'
 
 interface Task {
   id: string
@@ -18,6 +19,7 @@ const props = defineProps<{ task: Task | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const { session } = useAuth()
+const toast = useToast()
 const {
   activeProject,
   boardColumns,
@@ -28,6 +30,8 @@ const {
   comments,
   loadComments,
   addComment,
+  editComment,
+  deleteComment,
   clearComments
 } = useProjects()
 
@@ -35,9 +39,12 @@ function fullDate(ts: number) {
   return format(new Date(ts), 'PPp')
 }
 
+// The drawer reports "closed" once on mount, before any task is shown. Passing
+// that on as a close would wipe a ?task= deep link before the board has even
+// loaded the task it points at, so only a close of something open counts.
 const open = computed({
   get: () => props.task !== null,
-  set: (v: boolean) => { if (!v) emit('close') }
+  set: (v: boolean) => { if (!v && props.task) emit('close') }
 })
 
 // The panel slides out over ~half a second. It renders the last task it was
@@ -106,6 +113,15 @@ function resetWidth() {
 
 // Declared up here because the task-switch watcher below resets them.
 const commentDraft = ref('')
+// The update being rewritten in place, if any.
+const editingId = ref<string | null>(null)
+const editDraft = ref('')
+// The thread opens as its own sheet over the task rather than living under the
+// description: pinned there it took a third of the panel from the description
+// and still had to be scrolled inside itself to be read.
+const updatesOpen = ref(false)
+// Clicking anywhere along the composer row puts the caret in the editor.
+const composer = ref<{ focus: () => void } | null>(null)
 const tagDraft = ref('')
 const tagFocused = ref(false)
 const tagHighlight = ref(-1)
@@ -167,6 +183,7 @@ watch(editorContent, () => {
 watch(() => props.task?.id, (id, previousId) => {
   flushTitle(previousId)
   flushDescription(previousId)
+  updatesOpen.value = false
   if (!id) return
 
   titleDraft.value = props.task?.title ?? ''
@@ -177,6 +194,7 @@ watch(() => props.task?.id, (id, previousId) => {
   })
 
   commentDraft.value = ''
+  cancelEdit()
   tagDraft.value = ''
   tagHighlight.value = -1
   clearComments()
@@ -204,6 +222,32 @@ onBeforeUnmount(() => {
   flushTitle()
   flushDescription()
 })
+
+// ─── Images ────────────────────────────────────────────────
+
+// Pasted or dropped into the description. The file is stored with the task and
+// served from the task's own attachment route, so the notes uploader's per-note
+// bookkeeping is not involved.
+async function uploadImage(file: File): Promise<string | null> {
+  const id = props.task?.id
+  if (!id) return null
+  const form = new FormData()
+  form.append('file', file)
+  try {
+    const res = await $fetch<{ url: string }>(`/api/tasks/${id}/attachments`, { method: 'POST', body: form })
+    return res.url
+  } catch (e) {
+    const err = e as { data?: { message?: string } }
+    toast.add({
+      title: 'Image upload failed',
+      description: err?.data?.message,
+      icon: 'i-lucide-image-off',
+      color: 'error',
+      duration: 3000
+    })
+    return null
+  }
+}
 
 // ─── Labels ────────────────────────────────────────────────
 
@@ -276,7 +320,6 @@ function onTagBlur() {
 
 // ─── Updates (comments) ────────────────────────────────────
 
-const updatesOpen = useCookie<boolean>('kanban-updates-open', { default: () => true })
 const updatesEl = ref<HTMLElement | null>(null)
 
 function initials(name: string | null | undefined) {
@@ -286,7 +329,26 @@ function initials(name: string | null | undefined) {
 
 const userInitials = computed(() => initials(session.value?.user?.name))
 
+// An update posted by an agent is signed with the key it came in on, not with
+// the account that owns the key — otherwise a night of agent work reads back as
+// the user's own writing.
+function isAgentUpdate(comment: TaskComment) {
+  return comment.createdVia === 'mcp' || comment.createdVia === 'ai'
+}
+
+function updateAuthor(comment: TaskComment) {
+  if (comment.createdVia === 'mcp') return comment.keyName ?? 'MCP key'
+  if (comment.createdVia === 'ai') return 'AI assistant'
+  return comment.userName ?? 'Unknown'
+}
+
+function updateSourceLabel(comment: TaskComment) {
+  return comment.createdVia === 'mcp' ? 'MCP' : 'AI'
+}
+
 async function scrollUpdatesToEnd() {
+  await nextTick()
+  // The sheet mounts its content a tick after it opens.
   await nextTick()
   const el = updatesEl.value
   if (el) el.scrollTop = el.scrollHeight
@@ -300,16 +362,88 @@ async function sendComment() {
   scrollUpdatesToEnd()
 }
 
-function onCommentKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    sendComment()
+watch(updatesOpen, (isOpen) => {
+  if (!isOpen) return
+  scrollUpdatesToEnd()
+  nextTick(() => composer.value?.focus())
+})
+
+// ─── Editing / removing an update ──────────────────────────
+
+// Your own updates only, and that includes what an agent posted with your key —
+// the server holds the same line.
+function canChange(comment: TaskComment) {
+  return !!session.value?.user && comment.userId === session.value.user.id
+}
+
+// A `ref` inside v-for collects into an array; only one edit box is ever open,
+// so it is kept by hand.
+let editComposer: { focus: () => void } | null = null
+
+function setEditComposer(el: unknown) {
+  editComposer = el as { focus: () => void } | null
+}
+
+async function startEdit(comment: TaskComment) {
+  editingId.value = comment.id
+  editDraft.value = comment.body
+  await nextTick()
+  editComposer?.focus()
+}
+
+function cancelEdit() {
+  editingId.value = null
+  editDraft.value = ''
+}
+
+async function saveEdit() {
+  const id = editingId.value
+  const body = editDraft.value.trim()
+  const taskId = props.task?.id
+  if (!id || !taskId) return
+  // Emptying an update is not how it gets removed; that asks first.
+  if (!body) return
+  cancelEdit()
+  try {
+    await editComment(taskId, id, body)
+  } catch {
+    toast.add({ title: 'Could not save the update', icon: 'i-lucide-alert-triangle', color: 'error' })
   }
 }
 
-watch(updatesOpen, (isOpen) => {
-  if (isOpen) scrollUpdatesToEnd()
-})
+// Escape inside the edit box ends the edit, not the whole sheet.
+function onSheetEscape(event: KeyboardEvent) {
+  if (!editingId.value) return
+  event.preventDefault()
+  cancelEdit()
+}
+
+const deletingComment = ref<TaskComment | null>(null)
+
+async function confirmDeleteComment() {
+  const comment = deletingComment.value
+  deletingComment.value = null
+  if (!comment) return
+  if (editingId.value === comment.id) cancelEdit()
+  try {
+    await deleteComment(comment.taskId, comment.id)
+  } catch {
+    toast.add({ title: 'Could not remove the update', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+function commentMenu(comment: TaskComment) {
+  return [[
+    { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => startEdit(comment) }
+  ], [
+    {
+      label: 'Delete',
+      icon: 'i-lucide-trash-2',
+      color: 'error' as const,
+      onSelect: () => { deletingComment.value = comment }
+    }
+  ]]
+}
 
 // ─── Move / delete ─────────────────────────────────────────
 
@@ -323,7 +457,7 @@ const stateItems = computed(() =>
     label: c.name,
     // Rendered by the #item slot below: the same dot as the board column, so
     // state reads the same in both places.
-    dotClass: columnDotClass(c.name),
+    dot: columnDotAttrs(c),
     active: c.id === props.task?.columnId,
     onSelect: () => moveToColumn(c.id)
   }))]
@@ -338,8 +472,15 @@ async function confirmDelete() {
   // Drop pending autosaves: the row is about to be gone.
   descDirty = false
   titleDirty = false
+  const title = props.task.title
   emit('close')
   await deleteTask(id)
+  toast.add({
+    title: `"${title}" moved to trash`,
+    description: 'Restore it from Show trashed for the next 7 days.',
+    icon: 'i-lucide-trash-2',
+    duration: 5000
+  })
 }
 
 const menuItems = computed(() => [[
@@ -401,7 +542,8 @@ const menuItems = computed(() => [[
             >
               <span
                 class="size-2 shrink-0 rounded-full"
-                :class="columnDotClass(column?.name ?? '')"
+                :class="columnDotAttrs(column ?? { name: '' }).class"
+                :style="columnDotAttrs(column ?? { name: '' }).style"
               />
               {{ column?.name ?? 'No column' }}
             </UButton>
@@ -409,7 +551,8 @@ const menuItems = computed(() => [[
             <template #item="{ item }">
               <span
                 class="size-2 shrink-0 rounded-full"
-                :class="item.dotClass"
+                :class="item.dot.class"
+                :style="item.dot.style"
               />
               <span class="flex-1 truncate text-left">{{ item.label }}</span>
               <UIcon
@@ -428,6 +571,18 @@ const menuItems = computed(() => [[
           >
             <template v-if="activeProject">{{ activeProject.name }} · </template>edited {{ relativeTime(shownTask.updatedAt) }}
           </span>
+
+          <UButton
+            icon="i-lucide-message-square"
+            size="xs"
+            color="neutral"
+            :variant="updatesOpen ? 'soft' : 'ghost'"
+            :label="comments.length ? String(comments.length) : undefined"
+            :aria-label="comments.length ? `Updates (${comments.length})` : 'Updates'"
+            title="Updates"
+            :ui="{ label: 'tabular-nums' }"
+            @click="updatesOpen = true"
+          />
 
           <UDropdownMenu
             :items="menuItems"
@@ -466,19 +621,15 @@ const menuItems = computed(() => [[
             />
 
             <div class="mt-2 flex flex-wrap items-center gap-1.5">
-              <span
+              <KanbanLabelChip
                 v-for="tag in shownTask.tags"
                 :key="tag"
-                class="group flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset"
-                :class="tagChipClass(tag)"
-                @click="removeTag(tag)"
-              >
-                {{ tag }}
-                <UIcon
-                  name="i-lucide-x"
-                  class="size-3 opacity-40 transition-opacity group-hover:opacity-100"
-                />
-              </span>
+                :tag="tag"
+                editable
+                removable
+                chip-class="text-xs"
+                @remove="removeTag"
+              />
               <div class="relative min-w-24 flex-1">
                 <input
                   v-model="tagDraft"
@@ -503,12 +654,10 @@ const menuItems = computed(() => [[
                     :class="index === tagHighlight ? 'bg-elevated' : 'hover:bg-elevated/60'"
                     @mousedown.prevent="addTagValue(tag)"
                   >
-                    <span
-                      class="min-w-0 truncate rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset"
-                      :class="tagChipClass(tag)"
-                    >
-                      {{ tag }}
-                    </span>
+                    <KanbanLabelChip
+                      :tag="tag"
+                      chip-class="min-w-0 text-xs"
+                    />
                   </button>
                 </div>
               </div>
@@ -519,105 +668,212 @@ const menuItems = computed(() => [[
           <div class="flex min-h-0 flex-1 flex-col border-t border-default">
             <RichEditor
               v-model="editorContent"
+              :upload-image="uploadImage"
               placeholder="Add a description… (@ for dates, / for commands)"
               class="min-h-0 flex-1"
             />
           </div>
         </div>
-
-        <!-- Updates: a short running log of what happened -->
-        <section
-          class="flex shrink-0 flex-col border-t border-default"
-          :class="updatesOpen ? 'max-h-72' : ''"
-        >
-          <button
-            class="flex shrink-0 items-center gap-2 px-5 py-2.5 text-left transition-colors hover:bg-elevated/50"
-            @click="updatesOpen = !updatesOpen"
-          >
-            <UIcon
-              name="i-lucide-message-square"
-              class="size-3.5 text-muted"
-            />
-            <span class="text-xs font-semibold text-muted">Updates</span>
-            <span
-              v-if="comments.length"
-              class="text-xs text-dimmed"
-            >{{ comments.length }}</span>
-            <UIcon
-              :name="updatesOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
-              class="ml-auto size-3.5 text-dimmed"
-            />
-          </button>
-
-          <template v-if="updatesOpen">
-            <div
-              ref="updatesEl"
-              class="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-3"
-            >
-              <p
-                v-if="comments.length === 0"
-                class="py-6 text-center text-xs text-dimmed"
-              >
-                No updates yet. Note progress, blockers or decisions below.
-              </p>
-
-              <div
-                v-for="comment in comments"
-                :key="comment.id"
-                class="flex gap-2.5"
-              >
-                <UAvatar
-                  :alt="initials(comment.userName)"
-                  size="2xs"
-                  class="mt-0.5 shrink-0"
-                />
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-baseline gap-2">
-                    <span class="truncate text-xs font-medium text-default">
-                      {{ comment.userName ?? 'Unknown' }}
-                    </span>
-                    <span class="shrink-0 text-xs text-dimmed">
-                      {{ relativeTime(comment.createdAt) }}
-                    </span>
-                  </div>
-                  <p class="whitespace-pre-wrap break-words text-sm leading-relaxed text-default">
-                    {{ comment.body }}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div class="flex shrink-0 items-center gap-2 border-t border-default px-4 py-2.5">
-              <UAvatar
-                :alt="userInitials"
-                size="2xs"
-                class="shrink-0"
-              />
-              <input
-                v-model="commentDraft"
-                placeholder="Add an update…"
-                class="min-w-0 flex-1 bg-transparent text-sm text-default outline-none placeholder:text-dimmed"
-                @keydown="onCommentKeydown"
-              >
-              <UButton
-                icon="i-lucide-arrow-up"
-                size="xs"
-                color="primary"
-                :disabled="!commentDraft.trim()"
-                aria-label="Add update"
-                @click="sendComment"
-              />
-            </div>
-          </template>
-        </section>
       </div>
     </template>
   </UDrawer>
 
+  <!-- Updates: a short running log of what happened, in a sheet of its own
+       that slides in over the task. -->
+  <USlideover
+    v-model:open="updatesOpen"
+    side="right"
+    :content="{ onEscapeKeyDown: onSheetEscape }"
+    :ui="{ content: 'max-w-md' }"
+  >
+    <template #content>
+      <div class="flex h-full flex-col bg-default">
+        <header class="flex shrink-0 items-center gap-2 border-b border-default px-4 py-2.5">
+          <UIcon
+            name="i-lucide-message-square"
+            class="size-4 text-muted"
+          />
+          <span class="text-sm font-semibold text-default">Updates</span>
+          <span
+            v-if="comments.length"
+            class="text-xs tabular-nums text-dimmed"
+          >{{ comments.length }}</span>
+          <span
+            v-if="shownTask"
+            class="min-w-0 flex-1 truncate text-xs text-dimmed"
+            :title="shownTask.title"
+          >· {{ shownTask.title }}</span>
+          <UButton
+            icon="i-lucide-x"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            aria-label="Close updates"
+            class="ml-auto"
+            @click="updatesOpen = false"
+          />
+        </header>
+
+        <div
+          ref="updatesEl"
+          class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4"
+        >
+          <p
+            v-if="comments.length === 0"
+            class="py-10 text-center text-xs text-dimmed"
+          >
+            No updates yet. Note where this stands — on staging, waiting on feedback, needs more work.
+          </p>
+
+          <div
+            v-for="comment in comments"
+            :key="comment.id"
+            class="group/update flex w-full gap-2.5"
+          >
+            <UAvatar
+              v-if="isAgentUpdate(comment)"
+              icon="i-lucide-bot"
+              size="2xs"
+              class="mt-0.5 shrink-0"
+            />
+            <UAvatar
+              v-else
+              :alt="initials(comment.userName)"
+              size="2xs"
+              class="mt-0.5 shrink-0"
+            />
+            <div class="w-full min-w-0 flex-1">
+              <div class="flex items-baseline gap-2">
+                <span class="truncate text-xs font-medium text-default">
+                  {{ updateAuthor(comment) }}
+                </span>
+                <span
+                  v-if="isAgentUpdate(comment)"
+                  class="shrink-0 rounded px-1 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-muted ring-1 ring-inset ring-accented"
+                >
+                  {{ updateSourceLabel(comment) }}
+                </span>
+                <span
+                  class="shrink-0 text-xs text-dimmed"
+                  :title="fullDate(comment.createdAt)"
+                >
+                  {{ relativeTime(comment.createdAt) }}
+                </span>
+                <span
+                  v-if="comment.editedAt"
+                  class="shrink-0 text-xs text-dimmed"
+                  :title="`Edited ${fullDate(comment.editedAt)}`"
+                >
+                  (edited)
+                </span>
+
+                <UDropdownMenu
+                  v-if="canChange(comment) && editingId !== comment.id"
+                  :items="commentMenu(comment)"
+                  :content="{ align: 'end', collisionPadding: 12 }"
+                >
+                  <UButton
+                    icon="i-lucide-ellipsis"
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    aria-label="Update options"
+                    class="-my-1 ml-auto opacity-0 transition-opacity focus-visible:opacity-100 group-hover/update:opacity-100 data-[state=open]:opacity-100"
+                  />
+                </UDropdownMenu>
+              </div>
+
+              <div
+                v-if="editingId === comment.id"
+                class="mt-1 rounded-md border border-default bg-elevated/40 px-2.5 py-2"
+              >
+                <UpdateComposer
+                  :ref="setEditComposer"
+                  v-model="editDraft"
+                  placeholder="Edit the update…"
+                  @submit="saveEdit"
+                />
+                <div class="mt-2 flex items-center justify-end gap-1">
+                  <span class="mr-auto text-[0.6875rem] text-dimmed">Enter to save · Esc to cancel</span>
+                  <UButton
+                    label="Cancel"
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    @click="cancelEdit"
+                  />
+                  <UButton
+                    label="Save"
+                    size="xs"
+                    :disabled="!editDraft.trim()"
+                    @click="saveEdit"
+                  />
+                </div>
+              </div>
+              <InlineMarkdown
+                v-else
+                :text="comment.body"
+                class="text-sm leading-relaxed text-default"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="flex shrink-0 cursor-text items-start gap-2 border-t border-default px-4 py-3"
+          @click="composer?.focus()"
+        >
+          <UAvatar
+            :alt="userInitials"
+            size="2xs"
+            class="mt-0.5 shrink-0"
+          />
+          <UpdateComposer
+            ref="composer"
+            v-model="commentDraft"
+            placeholder="Add an update…"
+            @submit="sendComment"
+          />
+          <UButton
+            icon="i-lucide-arrow-up"
+            size="xs"
+            color="primary"
+            class="shrink-0"
+            :disabled="!commentDraft.trim()"
+            aria-label="Add update"
+            @click="sendComment"
+          />
+        </div>
+      </div>
+    </template>
+  </USlideover>
+
+  <UModal
+    :open="deletingComment !== null"
+    title="Delete this update?"
+    description="It is removed from the task for good. This cannot be undone."
+    :ui="{ footer: 'justify-end' }"
+    @update:open="(v: boolean) => { if (!v) deletingComment = null }"
+  >
+    <template #footer>
+      <UButton
+        label="Cancel"
+        color="neutral"
+        variant="ghost"
+        @click="deletingComment = null"
+      />
+      <UButton
+        label="Delete update"
+        color="error"
+        @click="confirmDeleteComment"
+      />
+    </template>
+  </UModal>
+
   <UModal
     v-model:open="deleteOpen"
     title="Delete task?"
-    description="The task and its updates are deleted permanently."
+    description="It moves to the board's trash with its updates. Show trashed on the board can restore it for the next 7 days."
     :ui="{ footer: 'justify-end' }"
   >
     <template #footer>
