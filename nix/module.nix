@@ -147,7 +147,7 @@ in
     allowSignUp = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Whether visitors may create email/password accounts.";
+      description = "Whether visitors may create accounts, by any sign-in method.";
     };
 
     discord = {

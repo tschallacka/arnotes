@@ -105,7 +105,7 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `APP_PORT` | `3000` | Host port mapped to the application |
 | `DATABASE_URL` | bundled PostgreSQL | Complete PostgreSQL connection URL |
 | `BETTER_AUTH_SECRET` | generated | Stable 32+ character authentication secret; generated into the data volume when empty |
-| `ALLOW_SIGN_UP` | `true` | Whether visitors may create email/password accounts |
+| `ALLOW_SIGN_UP` | `true` | Whether visitors may create accounts, by any sign-in method |
 | `NUXT_PUBLIC_DISCORD_ENABLED` | `false` | Show and enable Discord OAuth sign-in |
 | `DISCORD_CLIENT_ID` | empty | Discord application client ID |
 | `DISCORD_CLIENT_SECRET` | empty | Discord application client secret |
@@ -216,7 +216,7 @@ Key options (`services.arnotes.*`):
 | `database.url` | derived | Use an external database instead of the local one |
 | `betterAuth.url` | `http://localhost:3000` | Public origin used by authentication |
 | `betterAuth.secretFile` | generated | Read a stable 32+ char secret from a file |
-| `allowSignUp` | `true` | Allow new email/password accounts |
+| `allowSignUp` | `true` | Allow new accounts, by any sign-in method |
 | `discord.enable` / `github.enable` / `google.enable` | `false` | Enable OAuth sign-in; set `clientId`/`clientSecret` |
 | `environment` | `{}` | Extra environment variables |
 | `openFirewall` | `false` | Open the app port in the firewall |

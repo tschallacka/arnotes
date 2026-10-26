@@ -4,6 +4,7 @@ All notable changes to Arnotes are documented in this file.
 
 ## Unreleased
 
+- `ALLOW_SIGN_UP=false` now closes sign-up through Discord, GitHub and Google as well. Before, it only stopped new email/password accounts, so a private instance with an OAuth button still let anyone in
 - Sign in with Google: set `NUXT_PUBLIC_GOOGLE_ENABLED`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to show the button, the same way Discord and GitHub are enabled
 - The Arnai launcher is smaller and quieter, and the chat panel has softer borders and rounder corners
 - The editor takes whatever is pasted into it: formatted text keeps its formatting, Markdown source becomes what it describes, a URL over a selection links it, code copied from VS Code lands in a code block of the right language, and checkbox lists from GitHub or Notion become task lists. Copying out puts Markdown on the plain-text side of the clipboard

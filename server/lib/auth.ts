@@ -4,6 +4,10 @@ import { organization } from 'better-auth/plugins/organization'
 import { db } from '../db'
 import * as schema from '../db/schema'
 
+// One switch for every way an account can be created. A provider that ignored it
+// would turn a private instance back into an open one through its sign-in button.
+const signUpDisabled = process.env.ALLOW_SIGN_UP === 'false'
+
 const discordEnabled = process.env.NUXT_PUBLIC_DISCORD_ENABLED === 'true'
   && Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET)
 const githubEnabled = process.env.NUXT_PUBLIC_GITHUB_ENABLED === 'true'
@@ -40,14 +44,15 @@ export const auth = betterAuth({
   ],
   emailAndPassword: {
     enabled: true,
-    disableSignUp: process.env.ALLOW_SIGN_UP === 'false'
+    disableSignUp: signUpDisabled
   },
   socialProviders: {
     ...(discordEnabled
       ? {
           discord: {
             clientId: process.env.DISCORD_CLIENT_ID!,
-            clientSecret: process.env.DISCORD_CLIENT_SECRET!
+            clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+            disableSignUp: signUpDisabled
           }
         }
       : {}),
@@ -55,7 +60,8 @@ export const auth = betterAuth({
       ? {
           github: {
             clientId: process.env.GITHUB_CLIENT_ID!,
-            clientSecret: process.env.GITHUB_CLIENT_SECRET!
+            clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+            disableSignUp: signUpDisabled
           }
         }
       : {}),
@@ -63,7 +69,8 @@ export const auth = betterAuth({
       ? {
           google: {
             clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+            disableSignUp: signUpDisabled
           }
         }
       : {})
