@@ -1,6 +1,6 @@
 {
   "node-deps": {
-    "x86_64-linux": "sha256-2WYCY+Fj38c7qoxsJqYP6RynBVl0EF142m2pftOxXD4=",
+    "x86_64-linux": "sha256-Du34acZPrCAOLuDfQn+Af4B5yp12+GoL2Ulb10SdGlI=",
     "aarch64-linux": "sha256-fEDbPcZMMTQsKrpdrJXxX2iPI2q9VFGTkaFZG7l/vFk=",
     "aarch64-darwin": "sha256-Ne0sqao1EcZsZFWjUEup/EOqYE/vJa7L6DTmu/SEzX4="
   },
