@@ -4,6 +4,11 @@ All notable changes to Arnotes are documented in this file.
 
 ## Unreleased
 
+- Passkeys: add one under **Settings → Security**, then sign in with Touch ID, Windows Hello, a phone or a security key. On by default; no outside service needed
+- Two-factor authentication with an authenticator app and one-time backup codes, set up under **Settings → Security**
+- "Email me a code" sign-in, when an SMTP server is configured (`NUXT_PUBLIC_EMAIL_CODE_ENABLED` and `SMTP_*`). Accounts with two-factor on cannot use it
+- Sign-in through your own OpenID Connect server — Authentik, Authelia, Keycloak and the like — with `NUXT_PUBLIC_OIDC_ENABLED` and `OIDC_*`
+- The database gains `passkey` and `two_factor` tables and a `two_factor_enabled` column on `user`; the schema push on startup adds them
 - `ALLOW_SIGN_UP=false` now closes sign-up through Discord, GitHub and Google as well. Before, it only stopped new email/password accounts, so a private instance with an OAuth button still let anyone in
 - Sign in with Google: set `NUXT_PUBLIC_GOOGLE_ENABLED`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to show the button, the same way Discord and GitHub are enabled
 - The Arnai launcher is smaller and quieter, and the chat panel has softer borders and rounder corners

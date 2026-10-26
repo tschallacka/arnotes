@@ -1,10 +1,15 @@
 import { createAuthClient } from 'better-auth/vue'
-import { organizationClient } from 'better-auth/client/plugins'
+import { emailOTPClient, genericOAuthClient, organizationClient, twoFactorClient } from 'better-auth/client/plugins'
+import { passkeyClient } from '@better-auth/passkey/client'
 
 const authClient = createAuthClient({
   baseURL: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
   plugins: [
-    organizationClient()
+    organizationClient(),
+    twoFactorClient(),
+    passkeyClient(),
+    emailOTPClient(),
+    genericOAuthClient()
   ]
 })
 
@@ -26,6 +31,10 @@ export function useAuth() {
     await authClient.signIn.social({ provider: 'google', callbackURL: '/note' })
   }
 
+  async function signInWithOidc() {
+    await authClient.signIn.oauth2({ providerId: 'oidc', callbackURL: '/note' })
+  }
+
   async function signOut() {
     await authClient.signOut()
     window.location.href = '/login'
@@ -37,6 +46,7 @@ export function useAuth() {
     signInWithDiscord,
     signInWithGitHub,
     signInWithGoogle,
+    signInWithOidc,
     signOut
   }
 }

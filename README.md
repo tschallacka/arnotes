@@ -18,7 +18,8 @@ Arnotes is a fast, self-hosted note-taking app organized around inline tags, wit
 - Markdown import and export
 - Soft deletion and trash recovery
 - Private notes and boards, each with an optional expiring public link
-- Email/password accounts with optional Discord, GitHub and Google OAuth
+- Email/password accounts with optional Discord, GitHub and Google OAuth, or your own OpenID Connect server
+- Passkeys, authenticator-app two-factor, and optional sign-in codes by email
 - Bring-your-own-key OpenRouter integration; AI is entirely optional
 - Kanban boards for projects: columns, drag-and-drop tasks, labels, rich-text descriptions, and a log of updates per task, written in a narrow inline Markdown (bold, italic, code, strike, highlight, links)
 - Live updates, so a change made by an AI agent, a teammate, or another tab shows up without a reload — on shared links too
@@ -115,6 +116,18 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `NUXT_PUBLIC_GOOGLE_ENABLED` | `false` | Show and enable Google OAuth sign-in |
 | `GOOGLE_CLIENT_ID` | empty | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | empty | Google OAuth client secret |
+| `NUXT_PUBLIC_OIDC_ENABLED` | `false` | Show and enable sign-in through your own OpenID Connect server |
+| `NUXT_PUBLIC_OIDC_NAME` | `Single sign-on` | Label on that button, e.g. `Authentik` |
+| `OIDC_DISCOVERY_URL` | empty | The server's `.well-known/openid-configuration` URL |
+| `OIDC_CLIENT_ID` | empty | OIDC client ID |
+| `OIDC_CLIENT_SECRET` | empty | OIDC client secret |
+| `NUXT_PUBLIC_PASSKEYS_ENABLED` | `true` | Allow signing in with passkeys |
+| `NUXT_PUBLIC_EMAIL_CODE_ENABLED` | `false` | Show and enable "Email me a code" sign-in; needs SMTP |
+| `SMTP_HOST` | empty | SMTP server for outgoing mail |
+| `SMTP_PORT` | `587`, or `465` when secure | SMTP port |
+| `SMTP_SECURE` | `false` | `true` for TLS from the first byte; otherwise STARTTLS is used when offered |
+| `SMTP_USER` / `SMTP_PASSWORD` | empty | SMTP credentials, if the server needs them |
+| `SMTP_FROM` | empty | Sender address, e.g. `Arnotes <notes@example.com>` |
 
 To enable Discord, set all three Discord variables and register this redirect URL in the Discord developer portal:
 
@@ -135,6 +148,26 @@ https://notes.example.com/api/auth/callback/google
 ```
 
 Google accepts plain `http` redirect URIs only for `localhost`, so `http://localhost:3000/api/auth/callback/google` works for local development. Other hosts, including `*.localhost` names and LAN IP addresses, need HTTPS on a public domain. While the consent screen is in *Testing*, only the Google accounts listed as test users can sign in.
+
+To use your own OpenID Connect server (Authentik, Authelia, Keycloak, Pocket ID, Kanidm), create a confidential client there with this redirect URI, set the three `OIDC_*` variables, and name the button with `NUXT_PUBLIC_OIDC_NAME`:
+
+```text
+https://notes.example.com/api/auth/oauth2/callback/oidc
+```
+
+### Passkeys, Two-Factor And Email Codes
+
+**Passkeys** work without any configuration. A signed-in user adds one under **Settings → Security**, then signs in with the passkey button, or by picking it from the email field's autofill. A passkey is bound to the hostname in `BETTER_AUTH_URL`: changing that hostname, or moving from `localhost` to a real domain, leaves existing passkeys unusable, and they have to be added again.
+
+**Two-factor authentication** is also always available, under **Settings → Security**: scan the QR code with an authenticator app, confirm one code, and keep the backup codes. It protects password sign-in, so it is only offered to accounts that have a password. An account with two-factor turned on cannot sign in with an email code, since that would let the inbox stand in for the second factor; passkeys and OAuth still work.
+
+**Email codes** need an SMTP server. Set `NUXT_PUBLIC_EMAIL_CODE_ENABLED=true` with at least `SMTP_HOST` and `SMTP_FROM`. A code is valid for 10 minutes and allows three attempts. When sign-up is allowed, a code for an unknown address creates the account. For local development, [Mailpit](https://mailpit.axllent.org/) catches the mail without sending it:
+
+```bash
+docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
+# .env: SMTP_HOST=localhost, SMTP_PORT=1025, SMTP_FROM=Arnotes <notes@localhost>
+# read the mail at http://localhost:8025
+```
 
 The `NUXT_PUBLIC_*_ENABLED` switches are used by both the server and client, so the same configuration works with native development and Docker Compose.
 
@@ -218,6 +251,9 @@ Key options (`services.arnotes.*`):
 | `betterAuth.secretFile` | generated | Read a stable 32+ char secret from a file |
 | `allowSignUp` | `true` | Allow new accounts, by any sign-in method |
 | `discord.enable` / `github.enable` / `google.enable` | `false` | Enable OAuth sign-in; set `clientId`/`clientSecret` |
+| `oidc.enable` | `false` | Enable your own OIDC server; set `name`, `discoveryUrl`, `clientId`, `clientSecret` |
+| `passkeys.enable` | `true` | Allow passkey sign-in |
+| `emailCode.enable` | `false` | Enable email-code sign-in; set `smtp.host`, `smtp.from` and, if needed, `smtp.port`/`secure`/`user`/`password` |
 | `environment` | `{}` | Extra environment variables |
 | `openFirewall` | `false` | Open the app port in the firewall |
 
@@ -358,7 +394,7 @@ Database structure is defined only in `server/db/schema.ts`. After changing it, 
 
 - Nuxt 4 and Vue 3 provide the client and Nitro API server.
 - Nuxt UI and Tailwind CSS provide the interface.
-- Better Auth handles email/password sessions and optional Discord, GitHub and Google OAuth.
+- Better Auth handles email/password sessions, passkeys, two-factor, email codes, and optional Discord, GitHub, Google and generic OIDC sign-in.
 - Drizzle ORM and PostgreSQL store application data.
 - Uploaded files are stored under `data/attachments` and mounted as a Docker volume.
 - OpenRouter powers optional user-configured AI actions.

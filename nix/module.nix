@@ -46,6 +46,19 @@ let
     GITHUB_CLIENT_SECRET = cfg.github.clientSecret;
     GOOGLE_CLIENT_ID = cfg.google.clientId;
     GOOGLE_CLIENT_SECRET = cfg.google.clientSecret;
+    NUXT_PUBLIC_OIDC_ENABLED = boolToStr cfg.oidc.enable;
+    NUXT_PUBLIC_OIDC_NAME = cfg.oidc.name;
+    OIDC_DISCOVERY_URL = cfg.oidc.discoveryUrl;
+    OIDC_CLIENT_ID = cfg.oidc.clientId;
+    OIDC_CLIENT_SECRET = cfg.oidc.clientSecret;
+    NUXT_PUBLIC_PASSKEYS_ENABLED = boolToStr cfg.passkeys.enable;
+    NUXT_PUBLIC_EMAIL_CODE_ENABLED = boolToStr cfg.emailCode.enable;
+    SMTP_HOST = cfg.smtp.host;
+    SMTP_PORT = toString cfg.smtp.port;
+    SMTP_SECURE = boolToStr cfg.smtp.secure;
+    SMTP_USER = cfg.smtp.user;
+    SMTP_PASSWORD = cfg.smtp.password;
+    SMTP_FROM = cfg.smtp.from;
     HOST = cfg.host;
     PORT = toString cfg.port;
     HOME = cfg.stateDir;
@@ -192,6 +205,74 @@ in
       clientSecret = lib.mkOption {
         type = lib.types.str;
         default = "";
+      };
+    };
+
+    oidc = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Sign in through your own OpenID Connect server.";
+      };
+      name = lib.mkOption {
+        type = lib.types.str;
+        default = "Single sign-on";
+        description = "Label on the sign-in button.";
+      };
+      discoveryUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "The server's .well-known/openid-configuration URL.";
+      };
+      clientId = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+      clientSecret = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+    };
+
+    passkeys.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Allow signing in with passkeys. Needs no outside service.";
+    };
+
+    emailCode.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Offer \"Email me a code\" sign-in. Needs smtp.host and smtp.from.";
+    };
+
+    smtp = {
+      host = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 587;
+      };
+      secure = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "TLS from the first byte (usually port 465). Off means STARTTLS.";
+      };
+      user = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+      password = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Ends up in the world-readable Nix store, like the OAuth client secrets.";
+      };
+      from = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "Arnotes <notes@example.com>";
       };
     };
 

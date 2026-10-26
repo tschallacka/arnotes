@@ -19,6 +19,11 @@ export default defineNuxtConfig({
       discordEnabled: false,
       githubEnabled: false,
       googleEnabled: false,
+      oidcEnabled: false,
+      // Label for the sign-in button, e.g. the name of your Authentik or Keycloak.
+      oidcName: 'Single sign-on',
+      emailCodeEnabled: false,
+      passkeysEnabled: true,
       allowSignUp: true
     }
   },
