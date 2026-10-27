@@ -14,6 +14,7 @@ const {
   board,
   boardColumns,
   isCustomerView,
+  updateTask,
   columnTasks,
   visibleColumnTasks,
   commentCount,
@@ -32,6 +33,16 @@ const {
 } = useProjects()
 
 const toast = useToast()
+
+async function onToggleComplete(taskId: string) {
+  const task = board.value?.tasks.find(t => t.id === taskId)
+  if (!task) return
+  try {
+    await updateTask(taskId, { completed: task.completedAt == null })
+  } catch {
+    toast.add({ title: 'Could not update the task', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
 
 // ─── Drag & drop ────────────────────────────────────────────
 
@@ -789,6 +800,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onBoardKeydown))
             :comment-count="commentCount(task.id)"
             :readonly="isCustomerView"
             @open="emit('openTask', $event)"
+            @toggle-complete="onToggleComplete"
             @restore="onRestoreTask"
             @purge="askPurgeTask"
           />

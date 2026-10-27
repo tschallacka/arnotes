@@ -56,11 +56,26 @@ export interface ProjectTask {
   description: string
   tags: string[]
   visibility?: Visibility
+  assigneeId?: string | null
+  // A calendar day, `YYYY-MM-DD`.
+  dueOn?: string | null
+  completedAt?: number | null
+  // Set on a subtask; those live in the parent's panel, not on the board.
+  parentTaskId?: string | null
   position: number
   createdAt: number
   updatedAt: number
   deletedAt?: number | null
   deletedVia?: DeletionSource | null
+}
+
+/** Someone a task on the open board can be assigned to. */
+export interface ProjectPerson {
+  id: string
+  name: string
+  email: string
+  image: string | null
+  kind: 'staff' | 'customer'
 }
 
 export interface TaskComment {
@@ -93,6 +108,7 @@ export interface TaskSearchRow {
 interface BoardPayload {
   columns: ProjectColumn[]
   tasks: ProjectTask[]
+  subtasks?: ProjectTask[]
   commentCounts: Record<string, number>
   // How much is in this board's trash. Sent whether or not the trashed rows
   // themselves were asked for — the header has to be able to say there is
@@ -108,6 +124,11 @@ const _board = ref<{ columns: ProjectColumn[], tasks: ProjectTask[] } | null>(nu
 // Update counts live beside the board: task PUT responses do not carry them, so
 // folding them into the task would wipe the badge on every edit.
 const _commentCounts = ref<Record<string, number>>({})
+// The open board's subtasks. Kept beside the cards rather than among them, so
+// nothing that walks the board's tasks has to know they exist.
+const _subtasks = ref<ProjectTask[]>([])
+// Who the open board's tasks can be assigned to.
+const _people = ref<ProjectPerson[]>([])
 const _boardLoading = ref(false)
 const _ready = ref(false)
 const _comments = ref<TaskComment[]>([])
@@ -136,6 +157,31 @@ const _tasksByColumn = computed(() => {
   return groups
 })
 
+// Each parent's subtasks in order, grouped once rather than per card.
+const _subtasksByParent = computed(() => {
+  const groups = new Map<string, ProjectTask[]>()
+  for (const task of _subtasks.value) {
+    if (!task.parentTaskId) continue
+    const group = groups.get(task.parentTaskId)
+    if (group) group.push(task)
+    else groups.set(task.parentTaskId, [task])
+  }
+  for (const group of groups.values()) group.sort((a, b) => a.position - b.position)
+  return groups
+})
+
+const _peopleById = computed(() => new Map(_people.value.map(p => [p.id, p])))
+
+// Read by every card for its assignee and subtask count. Asked for through
+// useProjects, each card would build the composable's computeds again.
+export function boardSubtasksOf(taskId: string): ProjectTask[] {
+  return _subtasksByParent.value.get(taskId) ?? []
+}
+
+export function boardPerson(id: string | null | undefined): ProjectPerson | null {
+  return id ? _peopleById.value.get(id) ?? null : null
+}
+
 // Search over projects and tasks; owned by the init plugin like the notes index.
 type ProjectSearchDoc = { id: string, type: 'project' | 'task', name: string, title: string, descriptionText: string }
 let _search: MiniSearch<ProjectSearchDoc> | null = null
@@ -148,13 +194,24 @@ let _searchSignature = ''
 // at once and the fetch only has to correct it. Kept small: a board is cheap to
 // fetch, it is the wait before anything is on screen that is being saved.
 const BOARD_CACHE_SIZE = 8
-const _boardCache = new Map<string, { columns: ProjectColumn[], tasks: ProjectTask[], commentCounts: Record<string, number> }>()
+const _boardCache = new Map<string, {
+  columns: ProjectColumn[]
+  tasks: ProjectTask[]
+  subtasks: ProjectTask[]
+  people: ProjectPerson[]
+  commentCounts: Record<string, number>
+}>()
 
 function cacheBoard(projectId: string) {
   // A board read with its trash showing is not the board as it normally opens.
   if (!_board.value || _showTrashed.value) return
   _boardCache.delete(projectId)
-  _boardCache.set(projectId, { ..._board.value, commentCounts: _commentCounts.value })
+  _boardCache.set(projectId, {
+    ..._board.value,
+    subtasks: _subtasks.value,
+    people: _people.value,
+    commentCounts: _commentCounts.value
+  })
   while (_boardCache.size > BOARD_CACHE_SIZE) _boardCache.delete(_boardCache.keys().next().value!)
 }
 
@@ -220,6 +277,14 @@ function upsertProject(project: Project) {
 
 function upsertBoardTask(task: ProjectTask) {
   if (!_board.value || task.projectId !== _activeProjectId.value) return
+  if (task.parentTaskId) {
+    const list = [..._subtasks.value]
+    const idx = list.findIndex(t => t.id === task.id)
+    if (idx < 0) list.push(task)
+    else list[idx] = task
+    _subtasks.value = list
+    return
+  }
   const tasks = [..._board.value.tasks]
   const idx = tasks.findIndex(t => t.id === task.id)
   if (idx < 0) tasks.push(task)
@@ -228,11 +293,14 @@ function upsertBoardTask(task: ProjectTask) {
 }
 
 function removeBoardTask(id: string) {
+  _subtasks.value = _subtasks.value.filter(t => t.id !== id && t.parentTaskId !== id)
   if (!_board.value) return
   _board.value = { ..._board.value, tasks: _board.value.tasks.filter(t => t.id !== id) }
 }
 
 function upsertSearchRow(task: ProjectTask) {
+  // Search finds cards; a subtask is reached through its parent.
+  if (task.parentTaskId) return
   const project = _projects.value.find(p => p.id === task.projectId)
   const row: TaskSearchRow = {
     id: task.id,
@@ -324,6 +392,8 @@ export function useProjects() {
     // Team switch: drop per-project board state, filters do not carry over.
     _board.value = null
     _boardCache.clear()
+    _subtasks.value = []
+    _people.value = []
     _commentCounts.value = {}
     _activeTags.value = []
     _showTrashed.value = false
@@ -381,6 +451,8 @@ export function useProjects() {
     if (_activeProjectId.value === id) {
       _activeProjectId.value = null
       _board.value = null
+      _subtasks.value = []
+      _people.value = []
       _commentCounts.value = {}
     }
   }
@@ -425,14 +497,22 @@ export function useProjects() {
         // comes back as it was left; one never opened waits on the fetch.
         const cached = _boardCache.get(id)
         _board.value = cached ? { columns: cached.columns, tasks: cached.tasks } : null
+        _subtasks.value = cached?.subtasks ?? []
+        _people.value = cached?.people ?? []
         _commentCounts.value = cached?.commentCounts ?? {}
         _trashedCount.value = 0
       }
       _activeProjectId.value = id
-      const board = await $fetch<BoardPayload>(boardUrl(id))
+      const [board, people] = await Promise.all([
+        $fetch<BoardPayload>(boardUrl(id)),
+        // The picker is not worth failing the board over.
+        $fetch<ProjectPerson[]>(`/api/projects/${id}/people`).catch(() => _people.value)
+      ])
       // A board opened for a project that was deleted mid-flight should not stick.
       if (_activeProjectId.value === id) {
         _board.value = { columns: board.columns, tasks: reconcileTasks(_board.value?.tasks, board.tasks) }
+        _subtasks.value = board.subtasks ?? []
+        _people.value = people
         _commentCounts.value = board.commentCounts ?? {}
         _trashedCount.value = board.trashedCount ?? 0
       }
@@ -459,6 +539,14 @@ export function useProjects() {
 
   function commentCount(taskId: string) {
     return _commentCounts.value[taskId] ?? 0
+  }
+
+  function subtasksOf(taskId: string) {
+    return _subtasksByParent.value.get(taskId) ?? []
+  }
+
+  function personById(id: string | null | undefined) {
+    return id ? _peopleById.value.get(id) ?? null : null
   }
 
   // ─── Label filter ─────────────────────────────────────────
@@ -583,6 +671,7 @@ export function useProjects() {
       const board = await $fetch<BoardPayload>(boardUrl(projectId))
       if (_activeProjectId.value === projectId) {
         _board.value = { columns: board.columns, tasks: reconcileTasks(_board.value?.tasks, board.tasks) }
+        _subtasks.value = board.subtasks ?? []
         _commentCounts.value = board.commentCounts ?? {}
         _trashedCount.value = board.trashedCount ?? 0
       }
@@ -600,7 +689,25 @@ export function useProjects() {
     return task
   }
 
-  async function updateTask(id: string, patch: { title?: string, description?: string, tags?: string[], visibility?: Visibility }) {
+  async function createSubtask(projectId: string, parentTaskId: string, title: string) {
+    const task = await $fetch<ProjectTask>(`/api/projects/${projectId}/tasks`, {
+      method: 'POST', headers: realtimeHeaders(),
+      body: { parentTaskId, title }
+    })
+    upsertBoardTask(task)
+    touchProject(projectId)
+    return task
+  }
+
+  async function updateTask(id: string, patch: {
+    title?: string
+    description?: string
+    tags?: string[]
+    visibility?: Visibility
+    assigneeId?: string | null
+    dueOn?: string | null
+    completed?: boolean
+  }) {
     const task = await $fetch<ProjectTask>(`/api/tasks/${id}`, { method: 'PUT', headers: realtimeHeaders(), body: patch })
     upsertBoardTask(task)
     upsertSearchRow(task)
@@ -630,6 +737,12 @@ export function useProjects() {
       method: 'DELETE', headers: realtimeHeaders()
     })
     removeSearchRow(id)
+
+    // A subtask goes for good and never counted towards the trash.
+    if (_subtasks.value.some(t => t.id === id)) {
+      _subtasks.value = _subtasks.value.filter(t => t.id !== id)
+      return res
+    }
 
     if (_showTrashed.value && !res.permanent) {
       // The trash is on screen, so the card stays put and goes grey instead of
@@ -765,6 +878,10 @@ export function useProjects() {
     isCustomerView,
     activeProjectId: _activeProjectId,
     board: _board,
+    subtasks: _subtasks,
+    people: _people,
+    subtasksOf,
+    personById,
     boardColumns,
     boardLoading: _boardLoading,
     comments: _comments,
@@ -801,6 +918,7 @@ export function useProjects() {
     deleteColumn,
     restoreColumn,
     createTask,
+    createSubtask,
     updateTask,
     moveTask,
     deleteTask,

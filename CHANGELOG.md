@@ -4,6 +4,9 @@ All notable changes to Arnotes are documented in this file.
 
 ## Unreleased
 
+- Tasks have an assignee, a due date and a done mark, set from the task panel. Anyone in the organisation or a contact of the board's customer can be assigned. A card shows its assignee's avatar and its due date, red once the day has passed; without a due date it still reads the first `@date` in the description. The circle on a card marks it done without opening it
+- Subtasks: a short list of tasks inside a task, added, ticked off and renamed in its panel. A card counts them (`1/2`); they are not cards themselves and stay out of search
+- The database gains `assignee_id`, `due_on`, `completed_at` and `parent_task_id` on `project_tasks`
 - Customers: an organisation can add customers, file projects under them, and invite their people with a single-use link. Contacts see the customer's boards in their personal workspace, can file tasks and post updates, and see only what is marked as visible to the customer
 - Tasks and updates have a visibility. Tasks are visible to the customer by default and can be made **Internal**; updates start internal and are shared on purpose. Internal tasks are also left off public board links
 - The first account on an instance is its admin and owns an organisation from the start; other accounts create organisations only once the admin allows it, under **Accounts on this instance**. On an existing instance, the oldest account becomes the admin at startup

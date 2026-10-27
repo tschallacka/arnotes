@@ -12,5 +12,11 @@ export function parseDueOn(value: unknown): string | null {
   if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== value) {
     throw createError({ statusCode: 400, message: 'That due date does not exist' })
   }
+  // A date field half-typed, such as year 0202, is a real date but never a
+  // deadline anyone meant.
+  const year = Number(value.slice(0, 4))
+  if (year < 2000 || year > 2999) {
+    throw createError({ statusCode: 400, message: 'Due dates fall between 2000 and 2999' })
+  }
   return value
 }

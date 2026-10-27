@@ -3,6 +3,8 @@ import { formatDateMention } from '~/composables/useDateMention'
 import { relativeTime } from '~/composables/useRelativeTime'
 import { deletionSourceLabel } from '#shared/utils/board'
 import { descriptionDetails } from '~/utils/cardDetails'
+import { dueDayToMs, isOverdueDay } from '~/utils/dueDate'
+import { boardPerson, boardSubtasksOf } from '~/composables/useProjects'
 
 const props = defineProps<{
   task: {
@@ -11,15 +13,24 @@ const props = defineProps<{
     description: string
     tags: string[]
     visibility?: 'internal' | 'customer'
+    assigneeId?: string | null
+    dueOn?: string | null
+    completedAt?: number | null
     deletedAt?: number | null
     deletedVia?: 'ui' | 'mcp' | 'ai' | null
   }
   commentCount?: number
-  // A customer contact's board: labels are shown, not recoloured.
+  // A customer contact's board: labels are shown, not recoloured, and the
+  // done mark is shown but not a button.
   readonly?: boolean
 }>()
 
-defineEmits<{ open: [taskId: string], restore: [taskId: string], purge: [taskId: string] }>()
+defineEmits<{
+  open: [taskId: string]
+  restore: [taskId: string]
+  purge: [taskId: string]
+  toggleComplete: [taskId: string]
+}>()
 
 // A card in the board's trash is drawn in place, faded, so it is obvious both
 // that it is gone and where it used to sit. It is not a link into the task
@@ -43,16 +54,28 @@ const snippet = computed(() => details.value.snippet)
 const checklist = computed(() => details.value.checklist)
 const checklistDone = computed(() => !!checklist.value && checklist.value.done === checklist.value.total)
 
-const due = computed(() => details.value.due)
+// A due date set on the task wins; without one, the first `@date` in the
+// description still stands in for it.
+const due = computed(() => props.task.dueOn ? dueDayToMs(props.task.dueOn) : details.value.due)
 const dueLabel = computed(() => due.value === null ? '' : formatDateMention(new Date(due.value).toISOString()))
-const overdue = computed(() => due.value !== null && due.value < Date.now())
+const completed = computed(() => props.task.completedAt != null)
+const overdue = computed(() => {
+  if (completed.value || due.value === null) return false
+  return props.task.dueOn ? isOverdueDay(props.task.dueOn) : due.value < Date.now()
+})
 
 // Only staff are ever sent an internal task, so the mark needs no audience check.
 const internal = computed(() => props.task.visibility === 'internal')
 
+const assignee = computed(() => boardPerson(props.task.assigneeId))
+
+const subtasks = computed(() => boardSubtasksOf(props.task.id))
+const subtasksDone = computed(() => subtasks.value.filter(t => t.completedAt != null).length)
+
 // One row of small print under the card, or none at all.
 const hasMeta = computed(() =>
-  props.task.tags.length > 0 || !!checklist.value || due.value !== null || !!props.commentCount || internal.value
+  props.task.tags.length > 0 || !!checklist.value || due.value !== null || !!props.commentCount
+  || internal.value || !!assignee.value || subtasks.value.length > 0
 )
 </script>
 
@@ -70,12 +93,39 @@ const hasMeta = computed(() =>
     @keydown.enter.prevent="trashed || $emit('open', task.id)"
     @keydown.space.prevent="trashed || $emit('open', task.id)"
   >
-    <p
-      class="line-clamp-2 text-sm font-medium leading-snug"
-      :class="trashed ? 'text-muted line-through decoration-1' : 'text-default'"
-    >
-      {{ task.title }}
-    </p>
+    <div class="flex items-start gap-1.5">
+      <!-- The done mark, Asana's circle. A button for staff, so ticking a task
+           off does not mean opening it; `.stop` keeps the click off the card. -->
+      <button
+        v-if="!trashed && !readonly"
+        type="button"
+        class="mt-px shrink-0 rounded-full transition-colors"
+        :class="completed ? 'text-success' : 'text-dimmed opacity-60 hover:text-success hover:opacity-100'"
+        :aria-label="completed ? 'Mark as not done' : 'Mark as done'"
+        :title="completed ? 'Mark as not done' : 'Mark as done'"
+        @click.stop="$emit('toggleComplete', task.id)"
+        @keydown.enter.stop
+        @keydown.space.stop
+      >
+        <UIcon
+          :name="completed ? 'i-lucide-circle-check' : 'i-lucide-circle'"
+          class="size-4"
+        />
+      </button>
+      <UIcon
+        v-else-if="completed"
+        name="i-lucide-circle-check"
+        class="mt-px size-4 shrink-0 text-success"
+      />
+      <p
+        class="line-clamp-2 text-sm font-medium leading-snug"
+        :class="trashed
+          ? 'text-muted line-through decoration-1'
+          : completed ? 'text-muted' : 'text-default'"
+      >
+        {{ task.title }}
+      </p>
+    </div>
 
     <p
       v-if="snippet"
@@ -142,6 +192,19 @@ const hasMeta = computed(() =>
         </span>
 
         <span
+          v-if="subtasks.length"
+          class="flex items-center gap-1 tabular-nums"
+          :class="subtasksDone === subtasks.length ? 'text-success' : ''"
+          :title="`${subtasksDone} of ${subtasks.length} subtasks done`"
+        >
+          <UIcon
+            name="i-lucide-list-tree"
+            class="size-3"
+          />
+          {{ subtasksDone }}/{{ subtasks.length }}
+        </span>
+
+        <span
           v-if="commentCount"
           class="flex items-center gap-1"
         >
@@ -151,6 +214,14 @@ const hasMeta = computed(() =>
           />
           {{ commentCount }}
         </span>
+
+        <UAvatar
+          v-if="assignee"
+          :src="assignee.image ?? undefined"
+          :alt="assignee.name || assignee.email"
+          size="3xs"
+          :title="`Assigned to ${assignee.name || assignee.email}`"
+        />
       </span>
     </div>
 

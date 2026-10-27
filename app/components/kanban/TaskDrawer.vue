@@ -3,6 +3,7 @@ import { columnDotAttrs } from '~/utils/tagColors'
 import { format } from 'date-fns'
 import { relativeTime } from '~/composables/useRelativeTime'
 import type { TaskComment, Visibility } from '~/composables/useProjects'
+import { dueDayToMs, isOverdueDay } from '~/utils/dueDate'
 
 interface Task {
   id: string
@@ -11,6 +12,9 @@ interface Task {
   description: string
   tags: string[]
   visibility?: Visibility
+  assigneeId?: string | null
+  dueOn?: string | null
+  completedAt?: number | null
   createdAt: number
   updatedAt: number
 }
@@ -26,6 +30,10 @@ const {
   isCustomerView,
   boardColumns,
   boardTagCounts,
+  people,
+  personById,
+  subtasksOf,
+  createSubtask,
   updateTask,
   moveTask,
   deleteTask,
@@ -123,6 +131,7 @@ const commentDraft = ref('')
 // Staff updates start internal: a note to the team is the common case, and
 // telling the customer is the step taken on purpose.
 const commentVisibility = ref<Visibility>('internal')
+const subtaskDraft = ref('')
 // The update being rewritten in place, if any.
 const editingId = ref<string | null>(null)
 const editDraft = ref('')
@@ -205,6 +214,7 @@ watch(() => props.task?.id, (id, previousId) => {
 
   commentDraft.value = ''
   commentVisibility.value = 'internal'
+  subtaskDraft.value = ''
   cancelEdit()
   tagDraft.value = ''
   tagHighlight.value = -1
@@ -371,6 +381,94 @@ async function sendComment() {
   commentDraft.value = ''
   await addComment(props.task.id, body, readonly.value ? undefined : commentVisibility.value)
   scrollUpdatesToEnd()
+}
+
+// ─── Done, assignee, due date ──────────────────────────────
+
+const taskCompleted = computed(() => shownTask.value?.completedAt != null)
+
+async function patchTask(patch: Parameters<typeof updateTask>[1], failure: string) {
+  const task = props.task
+  if (!task || readonly.value) return
+  try {
+    await updateTask(task.id, patch)
+  } catch {
+    toast.add({ title: failure, icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+function toggleCompleted() {
+  return patchTask({ completed: !taskCompleted.value }, 'Could not update the task')
+}
+
+const assignee = computed(() => personById(shownTask.value?.assigneeId))
+
+const assigneeItems = computed(() => [
+  [{ label: 'Unassigned', icon: 'i-lucide-user-x', onSelect: () => patchTask({ assigneeId: null }, 'Could not change the assignee') }],
+  people.value.map(person => ({
+    // Customer contacts are told apart, since giving them work is a choice.
+    label: person.kind === 'customer' ? `${person.name || person.email} (customer)` : person.name || person.email,
+    avatar: { src: person.image ?? undefined, alt: person.name || person.email },
+    onSelect: () => patchTask({ assigneeId: person.id }, 'Could not change the assignee')
+  }))
+])
+
+function onDueChange(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  patchTask({ dueOn: value || null }, 'Could not change the due date')
+}
+
+const dueOverdue = computed(() => {
+  const due = shownTask.value?.dueOn
+  return !!due && !taskCompleted.value && isOverdueDay(due)
+})
+
+// ─── Subtasks ──────────────────────────────────────────────
+
+const subtasks = computed(() => shownTask.value ? subtasksOf(shownTask.value.id) : [])
+
+async function addSubtask() {
+  const title = subtaskDraft.value.trim()
+  const task = props.task
+  if (!title || !task || !activeProject.value) return
+  subtaskDraft.value = ''
+  try {
+    await createSubtask(activeProject.value.id, task.id, title)
+  } catch {
+    toast.add({ title: 'Could not add the subtask', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+async function toggleSubtask(id: string, completed: boolean) {
+  try {
+    await updateTask(id, { completed })
+  } catch {
+    toast.add({ title: 'Could not update the subtask', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+async function renameSubtask(id: string, current: string, event: Event) {
+  const input = event.target as HTMLInputElement
+  const title = input.value.trim()
+  if (!title) {
+    input.value = current
+    return
+  }
+  if (title === current) return
+  try {
+    await updateTask(id, { title })
+  } catch {
+    input.value = current
+    toast.add({ title: 'Could not rename the subtask', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+async function removeSubtask(id: string) {
+  try {
+    await deleteTask(id)
+  } catch {
+    toast.add({ title: 'Could not remove the subtask', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
 }
 
 // ─── Visibility ────────────────────────────────────────────
@@ -569,6 +667,25 @@ const menuItems = computed(() => [[
                same two vertical lines as every dot and label in the list.
                `items-center` because the theme starts menu items at the top,
                which leaves the dots riding above their labels. -->
+          <UButton
+            v-if="!readonly"
+            :icon="taskCompleted ? 'i-lucide-circle-check' : 'i-lucide-circle'"
+            size="xs"
+            :color="taskCompleted ? 'success' : 'neutral'"
+            :variant="taskCompleted ? 'soft' : 'outline'"
+            :label="taskCompleted ? 'Done' : 'Mark done'"
+            class="shrink-0"
+            @click="toggleCompleted"
+          />
+          <UBadge
+            v-else-if="taskCompleted"
+            color="success"
+            variant="soft"
+            icon="i-lucide-circle-check"
+            class="shrink-0"
+          >
+            Done
+          </UBadge>
           <UBadge
             v-if="readonly"
             color="neutral"
@@ -734,6 +851,136 @@ const menuItems = computed(() => [[
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- Assignee and due date, Asana's two fields every task has. -->
+          <dl class="grid shrink-0 grid-cols-[6rem_1fr] items-center gap-x-3 gap-y-1.5 px-5 pb-3 text-xs">
+            <dt class="text-muted">
+              Assignee
+            </dt>
+            <dd class="min-w-0">
+              <UDropdownMenu
+                v-if="!readonly"
+                :items="assigneeItems"
+                :content="{ align: 'start', collisionPadding: 12 }"
+              >
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  class="-ml-2 max-w-full"
+                  :avatar="assignee ? { src: assignee.image ?? undefined, alt: assignee.name || assignee.email } : undefined"
+                  :icon="assignee ? undefined : 'i-lucide-user-plus'"
+                  :label="assignee ? (assignee.name || assignee.email) : 'No assignee'"
+                  :ui="{ label: assignee ? 'text-default' : 'text-dimmed' }"
+                />
+              </UDropdownMenu>
+              <span
+                v-else
+                class="text-default"
+              >{{ assignee ? (assignee.name || assignee.email) : 'No assignee' }}</span>
+            </dd>
+
+            <dt class="text-muted">
+              Due date
+            </dt>
+            <dd class="flex min-w-0 items-center gap-1">
+              <input
+                v-if="!readonly"
+                type="date"
+                min="2000-01-01"
+                max="2999-12-31"
+                :value="shownTask.dueOn ?? ''"
+                class="rounded bg-transparent px-0 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
+                :class="dueOverdue ? 'font-medium text-error' : shownTask.dueOn ? 'text-default' : 'text-dimmed'"
+                @change="onDueChange"
+              >
+              <span
+                v-else
+                :class="dueOverdue ? 'font-medium text-error' : 'text-default'"
+              >{{ shownTask.dueOn ? format(new Date(dueDayToMs(shownTask.dueOn)), 'PP') : 'No due date' }}</span>
+              <UButton
+                v-if="!readonly && shownTask.dueOn"
+                icon="i-lucide-x"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                aria-label="Clear due date"
+                @click="patchTask({ dueOn: null }, 'Could not change the due date')"
+              />
+            </dd>
+          </dl>
+
+          <!-- Subtasks: their own short checklist of tasks, ticked off here. -->
+          <div
+            v-if="subtasks.length || !readonly"
+            class="shrink-0 border-t border-default px-5 py-2.5"
+          >
+            <p class="mb-1 text-xs font-medium text-muted">
+              Subtasks
+              <span
+                v-if="subtasks.length"
+                class="tabular-nums text-dimmed"
+              >{{ subtasks.filter(s => s.completedAt != null).length }}/{{ subtasks.length }}</span>
+            </p>
+            <div
+              v-for="sub in subtasks"
+              :key="sub.id"
+              class="group/sub flex items-center gap-2 py-0.5"
+            >
+              <button
+                type="button"
+                class="shrink-0"
+                :class="sub.completedAt != null ? 'text-success' : 'text-dimmed hover:text-success'"
+                :disabled="readonly"
+                :aria-label="sub.completedAt != null ? 'Mark subtask as not done' : 'Mark subtask as done'"
+                @click="toggleSubtask(sub.id, sub.completedAt == null)"
+              >
+                <UIcon
+                  :name="sub.completedAt != null ? 'i-lucide-circle-check' : 'i-lucide-circle'"
+                  class="size-4"
+                />
+              </button>
+              <input
+                :value="sub.title"
+                :readonly="readonly"
+                class="min-w-0 flex-1 bg-transparent py-0.5 text-sm outline-none"
+                :class="sub.completedAt != null ? 'text-muted line-through decoration-1' : 'text-default'"
+                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+                @blur="renameSubtask(sub.id, sub.title, $event)"
+              >
+              <UAvatar
+                v-if="personById(sub.assigneeId)"
+                :src="personById(sub.assigneeId)?.image ?? undefined"
+                :alt="personById(sub.assigneeId)?.name"
+                size="3xs"
+              />
+              <UButton
+                v-if="!readonly"
+                icon="i-lucide-x"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                aria-label="Remove subtask"
+                class="opacity-0 transition-opacity focus-visible:opacity-100 group-hover/sub:opacity-100"
+                @click="removeSubtask(sub.id)"
+              />
+            </div>
+            <form
+              v-if="!readonly"
+              class="flex items-center gap-2 py-0.5"
+              @submit.prevent="addSubtask"
+            >
+              <UIcon
+                name="i-lucide-plus"
+                class="size-4 shrink-0 text-dimmed"
+              />
+              <input
+                v-model="subtaskDraft"
+                placeholder="Add a subtask…"
+                class="min-w-0 flex-1 bg-transparent py-0.5 text-sm text-default outline-none placeholder:text-dimmed"
+              >
+            </form>
           </div>
 
           <!-- Description: the notes editor, bounded so it keeps its own scroll -->
