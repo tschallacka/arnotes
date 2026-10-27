@@ -187,7 +187,7 @@ function expiryLabel(key: ApiKeySummary): string {
               Copy your key now
             </p>
             <p class="text-xs text-muted">
-              This is the only time it is shown. Arnotes stores a hash of it, so it cannot be displayed again.
+              This is the only time it is shown. Taskmanager stores a hash of it, so it cannot be displayed again.
             </p>
             <div class="flex gap-2">
               <code class="flex-1 min-w-0 text-xs font-mono bg-default border border-default rounded-md px-3 py-2 overflow-x-auto whitespace-nowrap">{{ issuedToken }}</code>

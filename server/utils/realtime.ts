@@ -5,7 +5,7 @@
 //
 // Fan-out is in-process: peers live in this module's map, so a deployment
 // running several app instances would need a shared bus (Redis, Postgres
-// LISTEN/NOTIFY) between them. One instance, which is how Arnotes ships, needs
+// LISTEN/NOTIFY) between them. One instance, which is how Taskmanager ships, needs
 // nothing else.
 import type { Peer } from 'crossws'
 import type { H3Event } from 'h3'

@@ -1,4 +1,4 @@
-// The kanban tools Arnotes exposes over MCP: everything the board UI can do —
+// The kanban tools Taskmanager exposes over MCP: everything the board UI can do —
 // boards, columns, tasks, ordering and updates — reachable by an agent with a
 // `boards:*` key. They run against the database here, scoped to the workspace of
 // the API key, and mirror the HTTP endpoints the browser uses so a board changed

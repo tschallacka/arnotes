@@ -44,7 +44,7 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
-    echo "Arnotes development shell"
+    echo "Taskmanager development shell"
     echo "  db-start            start a local PostgreSQL on port 5432"
     echo "  db-stop             stop it again"
     echo "  bun install         install dependencies"

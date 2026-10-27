@@ -70,8 +70,8 @@ export async function streamOpenRouter(apiKey: string, model: string, prompt: st
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://arnotes.local',
-      'X-Title': 'Arnotes',
+      'HTTP-Referer': 'https://taskmanager.local',
+      'X-Title': 'Taskmanager',
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({

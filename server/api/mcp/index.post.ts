@@ -1,4 +1,4 @@
-// Arnotes' MCP server, spoken over the Streamable HTTP transport: one JSON-RPC
+// Taskmanager' MCP server, spoken over the Streamable HTTP transport: one JSON-RPC
 // request per POST, answered with a single JSON response. There is no session
 // state, so any agent that can send an `Authorization: Bearer` header can
 // connect, and every request is authorised on its own.
@@ -11,7 +11,7 @@ import type { ApiKeyScope } from '../../db/schema'
 import { closeTopic, publicNoteTopic, publish, workspaceTopic } from '../../utils/realtime'
 import type { RealtimeEvent } from '../../utils/realtime'
 
-const SERVER_NAME = 'arnotes'
+const SERVER_NAME = 'taskmanager'
 const SERVER_VERSION = '0.1.0'
 
 // Newest first. The client's requested version is echoed when we speak it,
@@ -19,7 +19,7 @@ const SERVER_VERSION = '0.1.0'
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05']
 const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]!
 
-const INSTRUCTIONS = `Arnotes is a tag-based note-taking app with kanban boards beside the notes.
+const INSTRUCTIONS = `Taskmanager is a tag-based note-taking app with kanban boards beside the notes.
 
 A note has a title, a Markdown body and tags, and tags are written inline in the body as #hashtags. A board has columns (kanban stages such as Backlog, To do, Verify, Done) holding tasks; a task has a title, a Markdown description, labels, and a running log of short updates.
 
@@ -126,7 +126,7 @@ async function handleMessage(message: JsonRpcMessage, context: ApiKeyContext) {
       return result(id, {
         protocolVersion,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: SERVER_NAME, title: 'Arnotes', version: SERVER_VERSION },
+        serverInfo: { name: SERVER_NAME, title: 'Taskmanager', version: SERVER_VERSION },
         instructions: INSTRUCTIONS
       })
     }
@@ -175,7 +175,7 @@ async function handleMessage(message: JsonRpcMessage, context: ApiKeyContext) {
       } catch (error) {
         if (error instanceof McpToolError) return toolFailure(id, error.message)
         console.error(`[mcp] ${name} failed`, error)
-        return toolFailure(id, `The "${name}" tool failed. Check the Arnotes server logs for details.`)
+        return toolFailure(id, `The "${name}" tool failed. Check the Taskmanager server logs for details.`)
       }
     }
 
@@ -196,7 +196,7 @@ export default defineEventHandler(async (event) => {
     context = await authenticateApiKey(event)
   } catch (error) {
     // Point unauthenticated clients at the scheme they should use.
-    setResponseHeader(event, 'WWW-Authenticate', 'Bearer realm="Arnotes MCP"')
+    setResponseHeader(event, 'WWW-Authenticate', 'Bearer realm="Taskmanager MCP"')
     throw error
   }
 

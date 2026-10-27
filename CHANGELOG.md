@@ -4,6 +4,7 @@ All notable changes to Arnotes are documented in this file.
 
 ## Unreleased
 
+- Renamed to Taskmanager wherever the name is shown: page titles, the logo, the installed app, sign-in emails, authenticator and passkey labels, the AI assistant's prompt, the MCP server's name and the docs. Install-level names stay as they were — `services.arnotes`, the `arnotes` package, database, user and Docker volumes — so an existing install upgrades in place. An MCP client that was added under the name `arnotes` keeps working; the setup page now suggests `taskmanager`
 - Tasks have an assignee, a due date and a done mark, set from the task panel. Anyone in the organisation or a contact of the board's customer can be assigned. A card shows its assignee's avatar and its due date, red once the day has passed; without a due date it still reads the first `@date` in the description. The circle on a card marks it done without opening it
 - Subtasks: a short list of tasks inside a task, added, ticked off and renamed in its panel. A card counts them (`1/2`); they are not cards themselves and stay out of search
 - The database gains `assignee_id`, `due_on`, `completed_at` and `parent_task_id` on `project_tasks`

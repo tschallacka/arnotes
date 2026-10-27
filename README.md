@@ -1,14 +1,14 @@
-# Arnotes
+# Taskmanager
 
 [![CI](https://github.com/AVMG20/arnotes/actions/workflows/ci.yml/badge.svg)](https://github.com/AVMG20/arnotes/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-34d399.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-34d399.svg)](https://github.com/AVMG20/arnotes/releases)
 
-Arnotes is a fast, self-hosted note-taking app organized around inline tags, with kanban boards for the work in flight. It includes a rich-text editor, full-text search, attachments, expiring public links to notes and boards, an installable PWA, optional AI writing tools through OpenRouter, and an MCP server for connecting AI agents.
+Taskmanager is a self-hosted project manager for an agency and its customers: organisations, customers with their own logins, kanban boards with assignees, due dates and subtasks, and notes organised by inline tags. It started as a fork of [Arnotes](https://github.com/AVMG20/arnotes-old), and its install names (`services.arnotes`, the `arnotes` database and Docker volumes) are kept from there so upgrades stay in place. It includes a rich-text editor, full-text search, attachments, expiring public links to notes and boards, an installable PWA, optional AI writing tools through OpenRouter, and an MCP server for connecting AI agents.
 
-![Arnotes editor](public/screenshot.png)
+![Taskmanager editor](public/screenshot.png)
 
-> Arnotes is at version 0.1.0. Back up your data before upgrading and review the [changelog](CHANGELOG.md) for upgrade instructions.
+> Taskmanager is at version 0.1.0. Back up your data before upgrading and review the [changelog](CHANGELOG.md) for upgrade instructions.
 
 ## Features
 
@@ -40,7 +40,7 @@ docker compose up -d --build
 
 Open [http://localhost:3000](http://localhost:3000), create an account, and start writing. The first account receives a welcome note automatically.
 
-That is the entire local self-hosting setup. Compose builds Arnotes, starts PostgreSQL, waits for it to become healthy, pushes the Drizzle schema, and generates a persistent authentication secret.
+That is the entire local self-hosting setup. Compose builds Taskmanager, starts PostgreSQL, waits for it to become healthy, pushes the Drizzle schema, and generates a persistent authentication secret.
 
 Check status and logs with:
 
@@ -87,7 +87,7 @@ docker compose up -d
 
 ### HTTPS And Reverse Proxy
 
-Arnotes listens on port `3000`. Put it behind a TLS-terminating reverse proxy for internet access. `BETTER_AUTH_URL` must exactly match the public origin, including `https://` and any non-standard port.
+Taskmanager listens on port `3000`. Put it behind a TLS-terminating reverse proxy for internet access. `BETTER_AUTH_URL` must exactly match the public origin, including `https://` and any non-standard port.
 
 Example Caddy configuration:
 
@@ -128,7 +128,7 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `SMTP_PORT` | `587`, or `465` when secure | SMTP port |
 | `SMTP_SECURE` | `false` | `true` for TLS from the first byte; otherwise STARTTLS is used when offered |
 | `SMTP_USER` / `SMTP_PASSWORD` | empty | SMTP credentials, if the server needs them |
-| `SMTP_FROM` | empty | Sender address, e.g. `Arnotes <notes@example.com>` |
+| `SMTP_FROM` | empty | Sender address, e.g. `Taskmanager <notes@example.com>` |
 
 To enable Discord, set all three Discord variables and register this redirect URL in the Discord developer portal:
 
@@ -166,7 +166,7 @@ https://notes.example.com/api/auth/oauth2/callback/oidc
 
 ```bash
 docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
-# .env: SMTP_HOST=localhost, SMTP_PORT=1025, SMTP_FROM=Arnotes <notes@localhost>
+# .env: SMTP_HOST=localhost, SMTP_PORT=1025, SMTP_FROM=Taskmanager <notes@localhost>
 # read the mail at http://localhost:8025
 ```
 
@@ -206,11 +206,11 @@ docker compose exec -T postgres pg_dump -U arnotes -d arnotes > arnotes.sql
 docker run --rm -v arnotes_app_data:/data:ro -v "$PWD":/backup alpine tar czf /backup/arnotes-data.tar.gz -C /data .
 ```
 
-When using an external database, use its matching connection details instead. Store the backup files somewhere separate from the host running Arnotes.
+When using an external database, use its matching connection details instead. Store the backup files somewhere separate from the host running Taskmanager.
 
 ### Updates
 
-Pull the new source, rebuild the image, and let Compose push the current schema before starting Arnotes:
+Pull the new source, rebuild the image, and let Compose push the current schema before starting Taskmanager:
 
 ```bash
 git pull --ff-only
@@ -308,7 +308,7 @@ bun run dev         # run the dev server with hot reload
 
 ## Connect An AI Agent
 
-Arnotes ships an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Claude Desktop, and any other MCP client can search, read, and write your notes, and run your kanban boards.
+Taskmanager ships an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Claude Desktop, and any other MCP client can search, read, and write your notes, and run your kanban boards.
 
 Open **Settings → API keys & MCP** to create a key, then follow the in-app setup guide at `/mcp`, which shows the endpoint for your install along with ready-made configuration snippets.
 
@@ -340,7 +340,7 @@ Anything addressable in the app is also addressable by its link. Paste the URL o
 The endpoint is `https://notes.example.com/api/mcp`, spoken over streamable HTTP and authenticated with an `Authorization: Bearer` header.
 
 ```bash
-claude mcp add --transport http arnotes https://notes.example.com/api/mcp \
+claude mcp add --transport http taskmanager https://notes.example.com/api/mcp \
   --header "Authorization: Bearer arn_your_key_here"
 ```
 
@@ -349,7 +349,7 @@ For clients configured with JSON:
 ```json
 {
   "mcpServers": {
-    "arnotes": {
+    "taskmanager": {
       "type": "http",
       "url": "https://notes.example.com/api/mcp",
       "headers": { "Authorization": "Bearer arn_your_key_here" }
@@ -360,7 +360,7 @@ For clients configured with JSON:
 
 Anything an agent writes shows up in an open browser immediately — the app listens on a WebSocket at `/_ws` and refetches what changed, so a board or note list never sits there stale. Public pages listen on the same socket for the one note or board they were given a link to, so a shared board follows the work as it moves. Behind a reverse proxy, that path needs the usual `Upgrade`/`Connection` headers forwarded; a single app instance holds the connections in memory, so running several would need a shared bus between them.
 
-Agents work with notes and task descriptions as Markdown; Arnotes converts to and from the editor's format on both sides.
+Agents work with notes and task descriptions as Markdown; Taskmanager converts to and from the editor's format on both sides.
 
 Nothing reachable over MCP deletes anything permanently. `delete_note` moves a note to the trash and `restore_note` brings it back; `delete_column` and `delete_task` do the same on a board, undone by `restore_column` and `restore_task` or by the user under **Show trashed** on the board. A board's trash is emptied automatically after 7 days. There is no `delete_board` tool at all — deleting a board takes every column, task and update with it, so it stays in the app behind a confirmation, where an agent cannot reach it.
 
@@ -425,4 +425,4 @@ Bug reports and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.m
 
 ## License
 
-Arnotes is available under the [MIT License](LICENSE).
+Taskmanager is available under the [MIT License](LICENSE).

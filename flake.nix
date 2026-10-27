@@ -1,5 +1,5 @@
 {
-  description = "Arnotes - a self-hosted, tag-based note-taking application";
+  description = "Taskmanager - self-hosted projects, tasks and notes for an agency and its customers";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

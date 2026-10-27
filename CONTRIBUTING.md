@@ -1,6 +1,6 @@
-# Contributing to Arnotes
+# Contributing to Taskmanager
 
-Thanks for helping improve Arnotes.
+Thanks for helping improve Taskmanager.
 
 ## Before You Start
 
@@ -21,7 +21,7 @@ Keep changes focused and preserve compatibility with existing persisted notes. D
 
 ## Bug Reports
 
-Include the Arnotes version, browser, deployment method, relevant sanitized logs, reproduction steps, expected behavior, and actual behavior. Do not post security vulnerabilities in public issues.
+Include the Taskmanager version, browser, deployment method, relevant sanitized logs, reproduction steps, expected behavior, and actual behavior. Do not post security vulnerabilities in public issues.
 
 ## License
 

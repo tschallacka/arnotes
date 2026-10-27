@@ -25,12 +25,12 @@ const origin = computed(() => (import.meta.client ? window.location.origin : '')
 const endpoint = computed(() => `${origin.value}/api/mcp`)
 
 const claudeCodeCommand = computed(() =>
-  `claude mcp add --transport http arnotes ${endpoint.value} \\\n  --header "Authorization: Bearer arn_your_key_here"`
+  `claude mcp add --transport http taskmanager ${endpoint.value} \\\n  --header "Authorization: Bearer arn_your_key_here"`
 )
 
 const jsonConfig = computed(() => JSON.stringify({
   mcpServers: {
-    arnotes: {
+    taskmanager: {
       type: 'http',
       url: endpoint.value,
       headers: { Authorization: 'Bearer arn_your_key_here' }
@@ -46,13 +46,13 @@ const curlCheck = computed(() =>
 )
 
 const skill = computed(() => `---
-name: arnotes
-description: Search, read and write the user's Arnotes notes and kanban boards through the Arnotes MCP server. Use whenever the user asks what they wrote down, refers to their notes or a #tag, or asks about their projects, boards or tasks.
+name: taskmanager
+description: Search, read and write the user's Taskmanager notes and kanban boards through the Taskmanager MCP server. Use whenever the user asks what they wrote down, refers to their notes or a #tag, or asks about their projects, boards or tasks.
 ---
 
-# Working with Arnotes
+# Working with Taskmanager
 
-Arnotes is the user's note-taking app, with kanban boards beside the notes. A
+Taskmanager is the user's note-taking app, with kanban boards beside the notes. A
 note has a title, a Markdown body and tags, and tags are written inline in the
 body as \`#hashtags\`. A board has columns — kanban stages such as Backlog, To do,
 Verify, Done — holding tasks; a task has a title, a Markdown description, labels
@@ -167,10 +167,10 @@ async function copy(text: string, id: string) {
             </div>
             <div class="min-w-0 space-y-2">
               <p class="text-sm font-medium">
-                Arnotes speaks MCP
+                Taskmanager speaks MCP
               </p>
               <p class="text-sm text-muted">
-                The Model Context Protocol is how AI agents plug into apps. Arnotes ships an MCP server, so
+                The Model Context Protocol is how AI agents plug into apps. Taskmanager ships an MCP server, so
                 Claude Code, Claude Desktop and any other MCP client can search your notes, read them, and
                 write new ones — working with your notes the way you would.
               </p>
@@ -364,8 +364,8 @@ async function copy(text: string, id: string) {
           <div class="px-5 py-4 space-y-3">
             <p class="text-sm text-muted">
               The tools work on their own, but agents use them better with a little guidance. Save this as
-              <code class="font-mono">.claude/skills/arnotes/SKILL.md</code> in a project, or
-              <code class="font-mono">~/.claude/skills/arnotes/SKILL.md</code> to have it everywhere.
+              <code class="font-mono">.claude/skills/taskmanager/SKILL.md</code> in a project, or
+              <code class="font-mono">~/.claude/skills/taskmanager/SKILL.md</code> to have it everywhere.
             </p>
             <pre class="text-xs font-mono bg-elevated/50 border border-default rounded-md p-3 overflow-x-auto max-h-96">{{ skill }}</pre>
           </div>
@@ -382,7 +382,7 @@ async function copy(text: string, id: string) {
           </div>
           <div class="px-5 py-4">
             <ul class="text-sm text-muted space-y-1.5 list-disc pl-4">
-              <li>A key is shown once, when you create it. Arnotes stores only a hash and cannot show it again.</li>
+              <li>A key is shown once, when you create it. Taskmanager stores only a hash and cannot show it again.</li>
               <li>Anyone holding a key has the access it was issued with — treat it like a password.</li>
               <li>Give agents read-only keys unless they genuinely need to write.</li>
               <li>Give each agent its own key, so revoking one does not disconnect the rest.</li>

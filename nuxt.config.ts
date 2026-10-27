@@ -85,9 +85,9 @@ export default defineNuxtConfig({
   pwa: {
     registerType: 'autoUpdate',
     manifest: {
-      name: 'Notes',
-      short_name: 'Notes',
-      description: 'A local-first note taking app',
+      name: 'Taskmanager',
+      short_name: 'Taskmanager',
+      description: 'Self-hosted projects, tasks and notes',
       theme_color: '#18181b',
       background_color: '#18181b',
       display: 'standalone',

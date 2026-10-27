@@ -70,7 +70,7 @@ let
 in
 {
   options.services.arnotes = {
-    enable = lib.mkEnableOption "Arnotes";
+    enable = lib.mkEnableOption "Taskmanager";
 
     package = lib.mkOption {
       type = lib.types.package;
@@ -79,7 +79,7 @@ in
         inherit (pkgs.stdenv.hostPlatform) system;
       }).arnotes;
       defaultText = lib.literalExpression "arnotes packages.arnotes";
-      description = "The Arnotes server package to run.";
+      description = "The Taskmanager server package to run.";
     };
 
     schemaPackage = lib.mkOption {
@@ -95,13 +95,13 @@ in
     host = lib.mkOption {
       type = lib.types.str;
       default = "0.0.0.0";
-      description = "Address the Arnotes server binds to.";
+      description = "Address the Taskmanager server binds to.";
     };
 
     port = lib.mkOption {
       type = lib.types.port;
       default = 3000;
-      description = "Port the Arnotes server listens on.";
+      description = "Port the Taskmanager server listens on.";
     };
 
     stateDir = lib.mkOption {
@@ -272,14 +272,14 @@ in
       from = lib.mkOption {
         type = lib.types.str;
         default = "";
-        example = "Arnotes <notes@example.com>";
+        example = "Taskmanager <notes@example.com>";
       };
     };
 
     environment = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = { };
-      description = "Extra environment variables passed to the Arnotes service.";
+      description = "Extra environment variables passed to the Taskmanager service.";
     };
 
     openFirewall = lib.mkOption {
@@ -315,7 +315,7 @@ in
     ];
 
     systemd.services.arnotes-secret = {
-      description = "Arnotes auth secret generation";
+      description = "Taskmanager auth secret generation";
       before = [ "arnotes.service" ];
       wantedBy = [ "arnotes.service" ];
       serviceConfig = {
@@ -329,7 +329,7 @@ in
     };
 
     systemd.services.arnotes-db-setup = {
-      description = "Arnotes database schema push";
+      description = "Taskmanager database schema push";
       after = [
         "postgresql.service"
         "arnotes-secret.service"
@@ -352,7 +352,7 @@ in
     };
 
     systemd.services.arnotes = {
-      description = "Arnotes";
+      description = "Taskmanager";
       after = [
         "arnotes-db-setup.service"
         "arnotes-secret.service"

@@ -1,4 +1,4 @@
-// The note tools Arnotes exposes over MCP. Unlike the in-app chat tools — which
+// The note tools Taskmanager exposes over MCP. Unlike the in-app chat tools — which
 // are declared on the server but executed in the browser against the notes store
 // — these run here, against the database, scoped to the workspace and permissions
 // of the API key that authenticated the request. Board tools live beside them in
@@ -71,7 +71,7 @@ function pruneAttachments(noteId: string, attachments: string[], content: string
 
 /**
  * Builds the stored HTML for a write. Titles and tags are both derived from the
- * body in Arnotes, so they are written into the content rather than kept beside
+ * body in Taskmanager, so they are written into the content rather than kept beside
  * it — exactly as the editor does.
  *
  * A new note gets its title prepended so nothing the caller wrote is lost; an
@@ -217,7 +217,7 @@ const NOTE_TOOLS: McpToolDefinition[] = [
   {
     name: 'create_note',
     title: 'Create a note',
-    description: 'Create a note from Markdown. The title becomes the note\'s leading heading and tags are appended to the body as #hashtags, which is how Arnotes stores them, so do not repeat either inside the body.',
+    description: 'Create a note from Markdown. The title becomes the note\'s leading heading and tags are appended to the body as #hashtags, which is how Taskmanager stores them, so do not repeat either inside the body.',
     scope: 'notes:write',
     readOnly: false,
     inputSchema: {

@@ -143,7 +143,7 @@ onMounted(async () => {
             Sign in with an email code
           </template>
           <template v-else>
-            {{ mode === 'sign-in' ? 'Sign in to Notes' : 'Create your account' }}
+            {{ mode === 'sign-in' ? 'Sign in to Taskmanager' : 'Create your account' }}
           </template>
         </h1>
         <p class="text-sm text-zinc-400">
@@ -157,7 +157,7 @@ onMounted(async () => {
             Sign in or create an account to accept your invitation.
           </template>
           <template v-else>
-            Your notes stay on this server.
+            Your projects and notes stay on this server.
           </template>
         </p>
       </div>

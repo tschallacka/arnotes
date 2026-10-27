@@ -35,15 +35,15 @@ const passkeysEnabled = process.env.NUXT_PUBLIC_PASSKEYS_ENABLED !== 'false'
 const SIGN_IN_CODE_MINUTES = 10
 
 function signInCodeMail(otp: string) {
-  const text = `Your Arnotes sign-in code is ${otp}.\n\nIt expires in ${SIGN_IN_CODE_MINUTES} minutes. If you did not try to sign in, you can ignore this email.`
-  const html = `<p>Your Arnotes sign-in code is</p>`
+  const text = `Your Taskmanager sign-in code is ${otp}.\n\nIt expires in ${SIGN_IN_CODE_MINUTES} minutes. If you did not try to sign in, you can ignore this email.`
+  const html = `<p>Your Taskmanager sign-in code is</p>`
     + `<p style="font-size:28px;font-weight:600;letter-spacing:6px;font-family:monospace">${otp}</p>`
     + `<p>It expires in ${SIGN_IN_CODE_MINUTES} minutes. If you did not try to sign in, you can ignore this email.</p>`
-  return { subject: `${otp} is your Arnotes sign-in code`, text, html }
+  return { subject: `${otp} is your Taskmanager sign-in code`, text, html }
 }
 
 export const auth = betterAuth({
-  appName: 'Arnotes',
+  appName: 'Taskmanager',
   database: drizzleAdapter(db, {
     provider: 'pg',
     schema: {
@@ -82,13 +82,13 @@ export const auth = betterAuth({
     }),
     // Asks for an authenticator code after a correct password. Better Auth only
     // applies it to password sign-in; the hook below covers email codes.
-    twoFactor({ issuer: 'Arnotes' }),
+    twoFactor({ issuer: 'Taskmanager' }),
     ...(passkeysEnabled
       ? [passkey({
           // A passkey is bound to this hostname, so one created on localhost
           // does not work on the production domain and vice versa.
           rpID: new URL(baseURL).hostname,
-          rpName: 'Arnotes',
+          rpName: 'Taskmanager',
           origin: new URL(baseURL).origin
         })]
       : []),

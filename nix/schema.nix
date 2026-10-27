@@ -62,7 +62,7 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   meta = {
-    description = "Drizzle schema tooling for Arnotes (drizzle-kit push).";
+    description = "Drizzle schema tooling for Taskmanager (drizzle-kit push).";
     homepage = "https://github.com/AVMG20/arnotes";
     license = lib.licenses.mit;
     platforms = lib.platforms.unix;

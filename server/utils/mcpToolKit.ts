@@ -69,7 +69,7 @@ export function newId(): string {
 /**
  * The id inside a reference someone pasted.
  *
- * Arnotes already addresses everything by a URL the user can copy straight out
+ * Taskmanager already addresses everything by a URL the user can copy straight out
  * of the address bar — /note/<id>, /projects/<id>, /projects/<id>?task=<id> and
  * their /public/ equivalents — so a pasted link is the easiest way to point an
  * agent at one exact thing, with no title to describe and no id to retype.

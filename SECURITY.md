@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Arnotes is currently pre-1.0. Security fixes are provided for the latest released version only.
+Taskmanager is currently pre-1.0. Security fixes are provided for the latest released version only.
 
 ## Reporting A Vulnerability
 

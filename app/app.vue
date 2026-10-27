@@ -1,14 +1,14 @@
 <script setup>
 useHead({
   htmlAttrs: { lang: 'en' },
-  titleTemplate: title => title ? `${title} — Arnotes` : 'Arnotes',
+  titleTemplate: title => title ? `${title} — Taskmanager` : 'Taskmanager',
   link: [
     { rel: 'icon', href: '/favicon.ico', sizes: 'any' },
     { rel: 'apple-touch-icon', href: '/apple-touch-icon-180x180.png' }
   ]
 })
 useSeoMeta({
-  ogSiteName: 'Arnotes',
+  ogSiteName: 'Taskmanager',
   twitterCard: 'summary'
 })
 </script>

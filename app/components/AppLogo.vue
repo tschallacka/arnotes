@@ -5,6 +5,6 @@
       alt=""
       class="h-[1em] w-auto"
     >
-    <span class="font-bold tracking-tight"><span class="text-[var(--ui-primary)]">Arno</span>tes</span>
+    <span class="font-bold tracking-tight"><span class="text-[var(--ui-primary)]">Task</span>manager</span>
   </span>
 </template>

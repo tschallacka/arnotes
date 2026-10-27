@@ -22,7 +22,7 @@ const noteId = computed(() => route.params.id as string)
 
 useSeoMeta({
   title: computed(() => note.value?.title || 'Shared note'),
-  description: computed(() => note.value ? `Read "${note.value.title}" on Arnotes` : undefined)
+  description: computed(() => note.value ? `Read "${note.value.title}" on Taskmanager` : undefined)
 })
 
 async function loadNote() {

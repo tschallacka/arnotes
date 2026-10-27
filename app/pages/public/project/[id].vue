@@ -44,7 +44,7 @@ const projectId = computed(() => route.params.id as string)
 
 useSeoMeta({
   title: computed(() => board.value?.project.name || 'Shared board'),
-  description: computed(() => board.value ? `Follow "${board.value.project.name}" on Arnotes` : undefined)
+  description: computed(() => board.value ? `Follow "${board.value.project.name}" on Taskmanager` : undefined)
 })
 
 async function loadBoard() {
