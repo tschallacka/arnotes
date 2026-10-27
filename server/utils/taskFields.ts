@@ -1,0 +1,16 @@
+// Field checks shared by the task endpoints and the MCP board tools, so a value
+// an agent sends is held to the same rule as one typed in the panel.
+
+/** A real calendar day as `YYYY-MM-DD`, or null to clear it. Throws 400 otherwise. */
+export function parseDueOn(value: unknown): string | null {
+  if (value === null || value === '') return null
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw createError({ statusCode: 400, message: 'Due dates are written YYYY-MM-DD' })
+  }
+  // Round-tripping through a Date rejects the 31st of a 30-day month.
+  const day = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== value) {
+    throw createError({ statusCode: 400, message: 'That due date does not exist' })
+  }
+  return value
+}

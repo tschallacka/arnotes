@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
         .where(and(
           inArray(projectTasks.columnId, columns.map(c => c.id)),
           isNull(projectTasks.deletedAt),
+          isNull(projectTasks.parentTaskId),
           // Anyone with the link reads at most what a customer would.
           eq(projectTasks.visibility, 'customer')
         ))

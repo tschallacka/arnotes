@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, bigint, integer, numeric, index, uniqueIndex, json } from 'drizzle-orm/pg-core'
+import { pgTable, text, boolean, timestamp, bigint, integer, numeric, index, uniqueIndex, json, type AnyPgColumn } from 'drizzle-orm/pg-core'
 
 // ─── Better Auth tables ───────────────────────────────────────────────────────
 
@@ -291,6 +291,18 @@ export const projectTasks = pgTable(
     tags: json('tags').$type<string[]>().notNull().default([]),
     // A customer's project is theirs to follow, so its tasks start out visible.
     visibility: text('visibility').$type<Visibility>().notNull().default('customer'),
+    // One person owns a task, as in Asana. Staff of the project's organisation or
+    // a contact of its customer; cleared if that account goes away.
+    assigneeId: text('assignee_id').references(() => user.id, { onDelete: 'set null' }),
+    // A calendar day, `YYYY-MM-DD`, so it means the same date in every timezone.
+    // A task without one still shows the first `@date` in its description.
+    dueOn: text('due_on'),
+    // Finished, independent of the column it sits in: a board's columns are its
+    // sections, and ticking a task off does not have to move it.
+    completedAt: bigint('completed_at', { mode: 'number' }),
+    // Set on a subtask. Subtasks live in their parent's panel rather than on the
+    // board, and go when the parent is removed for good.
+    parentTaskId: text('parent_task_id').references((): AnyPgColumn => projectTasks.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
@@ -306,6 +318,9 @@ export const projectTasks = pgTable(
   table => [
     index('project_tasks_project_id_idx').on(table.projectId),
     index('project_tasks_column_id_idx').on(table.columnId),
+    // My Tasks asks "what is assigned to me" across every board.
+    index('project_tasks_assignee_id_idx').on(table.assigneeId),
+    index('project_tasks_parent_task_id_idx').on(table.parentTaskId),
     // The trash view and the purge job both ask for "what is deleted here".
     index('project_tasks_deleted_at_idx').on(table.deletedAt)
   ]

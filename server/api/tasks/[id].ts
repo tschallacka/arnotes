@@ -1,9 +1,11 @@
 import { db } from '../../db'
 import { projects, projectTasks, VISIBILITIES, type Visibility } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { requireTask, requireColumn, requireStaff, columnTasksOrdered, positionBetween, uiDeletion } from '../../utils/projects'
+import { requireTask, requireColumn, requireStaff, columnTasksOrdered, subtasksOrdered, positionBetween, uiDeletion } from '../../utils/projects'
 import { publishFromEvent } from '../../utils/realtime'
 import { removeTaskAttachments } from '../../utils/attachments'
+import { requireAssignable } from '../../utils/people'
+import { parseDueOn } from '../../utils/taskFields'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -15,7 +17,9 @@ export default defineEventHandler(async (event) => {
   if (event.method === 'DELETE') {
     // Same two stages as a note: the first delete puts the card in the board's
     // trash, and deleting it again from there is what removes it.
-    const permanent = task.deletedAt !== null
+    // A subtask has no place on the board for its trash to be drawn in, so it
+    // goes in one step.
+    const permanent = task.deletedAt !== null || task.parentTaskId !== null
 
     if (permanent) {
       await db.delete(projectTasks).where(eq(projectTasks.id, id))
@@ -43,6 +47,9 @@ export default defineEventHandler(async (event) => {
     description?: string
     tags?: string[]
     visibility?: Visibility
+    assigneeId?: string | null
+    dueOn?: string | null
+    completed?: boolean
     columnId?: string
     beforeId?: string | null
     afterId?: string | null
@@ -53,6 +60,9 @@ export default defineEventHandler(async (event) => {
     description?: string
     tags?: string[]
     visibility?: Visibility
+    assigneeId?: string | null
+    dueOn?: string | null
+    completedAt?: number | null
     columnId?: string
     previousColumnId?: string | null
     position?: number
@@ -66,6 +76,37 @@ export default defineEventHandler(async (event) => {
   if (body.visibility !== undefined) {
     if (!VISIBILITIES.includes(body.visibility)) throw createError({ statusCode: 400, message: 'Unknown visibility' })
     patch.visibility = body.visibility
+  }
+  if (body.assigneeId !== undefined) {
+    if (body.assigneeId !== null) await requireAssignable(project, body.assigneeId)
+    patch.assigneeId = body.assigneeId
+  }
+  if (body.dueOn !== undefined) patch.dueOn = parseDueOn(body.dueOn)
+  if (body.completed !== undefined) {
+    // Ticking an already finished task again keeps the moment it was finished.
+    patch.completedAt = body.completed ? (task.completedAt ?? Date.now()) : null
+  }
+
+  // A subtask is ordered inside its parent and follows the parent's column, so
+  // it only ever moves among its siblings.
+  if (task.parentTaskId) {
+    if (body.columnId && body.columnId !== task.columnId) {
+      throw createError({ statusCode: 400, message: 'A subtask moves with its parent' })
+    }
+    if (body.beforeId !== undefined || body.afterId !== undefined) {
+      const siblings = (await subtasksOrdered(task.parentTaskId))
+        .filter(t => t.id !== id)
+        .map(t => ({ id: t.id, position: t.position }))
+      patch.position = await positionBetween(siblings, body.beforeId ?? null, body.afterId ?? null, async (ids) => {
+        for (const [idx, tid] of ids.entries()) {
+          await db.update(projectTasks).set({ position: idx * 1000 }).where(eq(projectTasks.id, tid))
+        }
+      })
+    }
+    const [updated] = await db.update(projectTasks).set(patch).where(eq(projectTasks.id, id)).returning()
+    await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, project.id))
+    await publishFromEvent(event, { type: 'board', projectId: project.id })
+    return updated
   }
 
   let targetColumnId = task.columnId
@@ -101,6 +142,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const [updated] = await db.update(projectTasks).set(patch).where(eq(projectTasks.id, id)).returning()
+  // Subtasks carry their parent's column, so they go where it goes.
+  if (patch.columnId) {
+    await db.update(projectTasks).set({ columnId: patch.columnId }).where(eq(projectTasks.parentTaskId, id))
+  }
   await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, project.id))
 
   await publishFromEvent(event, { type: 'board', projectId: project.id })

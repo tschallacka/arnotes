@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   // A task trashed on its own sits in a column that is still there; a task
   // trashed along with its column sits in one that is not. Selecting by column
   // covers both, because the column list above already widened with the flag.
-  const tasks = columns.length
+  const rows = columns.length
     ? await db
         .select()
         .from(projectTasks)
@@ -48,6 +48,13 @@ export default defineEventHandler(async (event) => {
         ))
         .orderBy(asc(projectTasks.position))
     : []
+
+  // Subtasks share their parent's column but are not cards. They come in a list
+  // of their own, which the cards count from and the task panel lists. One of a
+  // trashed parent stays behind until the parent goes for good, so it is left out.
+  const tasks = rows.filter(t => !t.parentTaskId)
+  const parentIds = new Set(tasks.filter(t => !t.deletedAt).map(t => t.id))
+  const subtasks = rows.filter(t => t.parentTaskId && parentIds.has(t.parentTaskId) && !t.deletedAt)
 
   const counts = tasks.length
     ? await db
@@ -69,7 +76,7 @@ export default defineEventHandler(async (event) => {
     const [trashedTasks] = await db
       .select({ total: count() })
       .from(projectTasks)
-      .where(and(eq(projectTasks.projectId, id), isNotNull(projectTasks.deletedAt)))
+      .where(and(eq(projectTasks.projectId, id), isNotNull(projectTasks.deletedAt), isNull(projectTasks.parentTaskId)))
 
     const [trashedColumns] = await db
       .select({ total: count() })
@@ -83,6 +90,7 @@ export default defineEventHandler(async (event) => {
     audience: project.audience,
     columns,
     tasks,
+    subtasks,
     commentCounts: Object.fromEntries(counts.map(c => [c.taskId, Number(c.total)])),
     trashedCount
   }

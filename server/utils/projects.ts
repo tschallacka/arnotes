@@ -101,12 +101,26 @@ export async function projectColumnsOrdered(projectId: string, options: TrashOpt
 
 // Ordering only ever concerns live cards: a trashed one keeps the position it
 // had so it can go back there, and letting it into this list would have the
-// renumber below hand its slot away while it sits in the trash.
+// renumber below hand its slot away while it sits in the trash. Subtasks carry
+// their parent's column but are ordered within the parent, so they stay out too.
 export async function columnTasksOrdered(columnId: string) {
   return db
     .select()
     .from(projectTasks)
-    .where(and(eq(projectTasks.columnId, columnId), isNull(projectTasks.deletedAt)))
+    .where(and(
+      eq(projectTasks.columnId, columnId),
+      isNull(projectTasks.deletedAt),
+      isNull(projectTasks.parentTaskId)
+    ))
+    .orderBy(asc(projectTasks.position))
+}
+
+/** A task's live subtasks, in their own order. */
+export async function subtasksOrdered(parentTaskId: string) {
+  return db
+    .select()
+    .from(projectTasks)
+    .where(and(eq(projectTasks.parentTaskId, parentTaskId), isNull(projectTasks.deletedAt)))
     .orderBy(asc(projectTasks.position))
 }
 

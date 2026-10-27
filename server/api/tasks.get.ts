@@ -47,7 +47,9 @@ export default defineEventHandler(async (event) => {
           ),
       // Trashed cards stay out of global search and out of the deep links it
       // hands back, so a hit never opens a board on a card that is not drawn.
-      isNull(projectTasks.deletedAt)
+      isNull(projectTasks.deletedAt),
+      // The sidebar counts cards from this list; a subtask is not one.
+      isNull(projectTasks.parentTaskId)
     ))
     .orderBy(desc(projectTasks.updatedAt), asc(projectTasks.id))
 })
