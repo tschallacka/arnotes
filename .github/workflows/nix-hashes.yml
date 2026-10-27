@@ -108,7 +108,10 @@ jobs:
       - name: Merge hashes
         run: |
           if ls /tmp/artifacts/*/hashes.json >/dev/null 2>&1; then
-            jq -s '.[0] * (.[1:] | add)' nix/hashes.json /tmp/artifacts/*/hashes.json > /tmp/hashes.json.new
+            # Deep-merge every file in turn. `add` merges objects shallowly, so each
+            # artifact's "node-deps" would replace the last and only one system's
+            # hash would survive.
+            jq -s 'reduce .[] as $part ({}; . * $part)' nix/hashes.json /tmp/artifacts/*/hashes.json > /tmp/hashes.json.new
             mv /tmp/hashes.json.new nix/hashes.json
           fi
 
