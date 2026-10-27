@@ -6,12 +6,14 @@ name: nix-hashes
 
 on:
   push:
-    branches: [main]
+    # master carries this fork's own changes on top of upstream's main.
+    branches: [main, master]
     paths:
       - "package.json"
       - "bun.lock"
       - "nix/**"
       - "flake.lock"
+      - ".github/workflows/nix-hashes.yml"
   workflow_dispatch:
   schedule:
     - cron: "0 3 * * 1"
@@ -93,7 +95,7 @@ jobs:
   update:
     name: update hashes.json
     needs: compute
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
     steps:
