@@ -138,7 +138,7 @@ function menuItems(project: { id: string, name: string }) {
         @click="openProject(project.id)"
       >
         <UIcon
-          name="i-lucide-kanban"
+          :name="project.customerId ? 'i-lucide-building-2' : 'i-lucide-kanban'"
           class="mt-0.5 size-4 shrink-0"
           :class="activeId === project.id ? 'text-primary' : 'text-dimmed group-hover:text-muted'"
         />
@@ -150,11 +150,13 @@ function menuItems(project: { id: string, name: string }) {
             class="truncate text-xs text-muted"
             :title="countTitle(project)"
           >
-            {{ relativeTime(project.updatedAt) }} · {{ countLabel(project) }} {{ countsFor(project).total === 1 ? 'task' : 'tasks' }}
+            {{ project.customerName ? `${project.customerName} · ` : '' }}{{ relativeTime(project.updatedAt) }} · {{ countLabel(project) }} {{ countsFor(project).total === 1 ? 'task' : 'tasks' }}
           </p>
         </div>
-        <!-- The menu keeps its slot even when invisible, so rows never jump on hover. -->
+        <!-- The menu keeps its slot even when invisible, so rows never jump on hover.
+             A customer's board is the organisation's to rename or delete. -->
         <UDropdownMenu
+          v-if="project.audience !== 'customer'"
           :items="menuItems(project)"
           :content="{ align: 'start', collisionPadding: 12 }"
         >

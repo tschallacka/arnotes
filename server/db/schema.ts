@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, bigint, integer, numeric, index, json } from 'drizzle-orm/pg-core'
+import { pgTable, text, boolean, timestamp, bigint, integer, numeric, index, uniqueIndex, json } from 'drizzle-orm/pg-core'
 
 // ─── Better Auth tables ───────────────────────────────────────────────────────
 
@@ -10,7 +10,13 @@ export const user = pgTable('user', {
   image: text('image'),
   createdAt: timestamp('created_at').notNull(),
   updatedAt: timestamp('updated_at').notNull(),
-  twoFactorEnabled: boolean('two_factor_enabled').default(false)
+  twoFactorEnabled: boolean('two_factor_enabled').default(false),
+  // The first account on an instance. It runs the instance: it decides who else
+  // may own an organisation.
+  isInstanceAdmin: boolean('is_instance_admin').notNull().default(false),
+  // Handed out by the instance admin. Without it a user can join organisations
+  // and customer portals but cannot start an organisation of their own.
+  canCreateOrganizations: boolean('can_create_organizations').notNull().default(false)
 })
 
 export const session = pgTable('session', {
@@ -117,6 +123,67 @@ export const invitation = pgTable('invitation', {
   inviterId: text('inviter_id').notNull().references(() => user.id, { onDelete: 'cascade' })
 })
 
+// ─── Customers ────────────────────────────────────────────────────────────────
+
+// A client of an organisation. Its projects live in the organisation, and the
+// people who log in for it (customer contacts) see only those projects, and only
+// what was marked visible to customers.
+export const customers = pgTable(
+  'customers',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+  },
+  table => [index('customers_organization_id_idx').on(table.organizationId)]
+)
+
+export type Customer = typeof customers.$inferSelect
+
+// A login that belongs to a customer. Kept apart from organisation membership on
+// purpose: a customer contact must never pick up staff access by accident.
+export const customerMembers = pgTable(
+  'customer_members',
+  {
+    id: text('id').primaryKey(),
+    customerId: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [
+    uniqueIndex('customer_members_customer_user_idx').on(table.customerId, table.userId),
+    index('customer_members_user_id_idx').on(table.userId)
+  ]
+)
+
+// A single-use link that turns whoever opens it into a contact of one customer.
+// It also lets that person create an account while sign-up is otherwise closed.
+export const customerInvitations = pgTable(
+  'customer_invitations',
+  {
+    id: text('id').primaryKey(),
+    customerId: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+    // Stored as a SHA-256 hash, like API keys: the link is shown once.
+    tokenHash: text('token_hash').notNull().unique(),
+    // Who the link was meant for, as a label for the list of open invitations.
+    label: text('label'),
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    expiresAt: bigint('expires_at', { mode: 'number' }).notNull(),
+    acceptedBy: text('accepted_by').references(() => user.id, { onDelete: 'set null' }),
+    acceptedAt: bigint('accepted_at', { mode: 'number' })
+  },
+  table => [index('customer_invitations_customer_id_idx').on(table.customerId)]
+)
+
+// Who may see a task or a comment. `internal` is the organisation's staff only;
+// `customer` adds the contacts of the project's customer. A project without a
+// customer has no outside readers, so the value changes nothing there.
+export const VISIBILITIES = ['internal', 'customer'] as const
+export type Visibility = typeof VISIBILITIES[number]
+
 // ─── App tables ───────────────────────────────────────────────────────────────
 
 export const notes = pgTable(
@@ -161,6 +228,9 @@ export const projects = pgTable(
     userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
     // NULL = personal workspace, same scoping rule as notes.
     teamId: text('team_id').references(() => organization.id, { onDelete: 'cascade' }),
+    // The client this project is for. Only a team project can have one, and the
+    // customer must belong to that same organisation.
+    customerId: text('customer_id').references(() => customers.id, { onDelete: 'set null' }),
     name: text('name').notNull().default('Untitled project'),
     // Colours the user has pinned to this board's task labels, keyed by label.
     // A label with no entry keeps the colour derived from its own text, so a
@@ -172,7 +242,10 @@ export const projects = pgTable(
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
   },
-  table => [index('projects_team_id_idx').on(table.teamId)]
+  table => [
+    index('projects_team_id_idx').on(table.teamId),
+    index('projects_customer_id_idx').on(table.customerId)
+  ]
 )
 
 export type Project = typeof projects.$inferSelect
@@ -216,6 +289,8 @@ export const projectTasks = pgTable(
     // Kanban labels: unlike note tags they do not group boards, they annotate
     // tasks (priority, workstream, …) and filter the board view.
     tags: json('tags').$type<string[]>().notNull().default([]),
+    // A customer's project is theirs to follow, so its tasks start out visible.
+    visibility: text('visibility').$type<Visibility>().notNull().default('customer'),
     position: integer('position').notNull(),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
@@ -250,6 +325,9 @@ export const taskComments = pgTable(
     // Inline Markdown, stored as written. A person types it in the drawer and an
     // agent posts it over MCP; both speak the same narrow subset.
     body: text('body').notNull(),
+    // Comments start internal: a remark leaking to a customer is the expensive
+    // mistake, so sharing one has to be a choice.
+    visibility: text('visibility').$type<Visibility>().notNull().default('internal'),
     // Which door the update came through, the same three as a deletion. An
     // update posted by an agent is signed with the key's name rather than the
     // owner's, so a log the user reads back says who was really working.

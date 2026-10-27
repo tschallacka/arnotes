@@ -1,17 +1,26 @@
 import { db } from '../db'
-import { projects, projectColumns } from '../db/schema'
-import { and, asc, desc, inArray, isNull } from 'drizzle-orm'
+import { customers, projects, projectColumns } from '../db/schema'
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { getProjectAccessFilter, genId } from '../utils/projects'
-import { getUserActiveTeamId } from '../utils/auth-helpers'
+import { audienceFor, getUserActiveTeamId } from '../utils/auth-helpers'
+import { requireOrgCustomer } from '../utils/customers'
 import { publishFromEvent } from '../utils/realtime'
 import { terminalColumnIds } from '#shared/utils/board'
 
 export const DEFAULT_COLUMNS = ['Backlog', 'To do', 'Verify', 'Done'] as const
 
 export default defineEventHandler(async (event) => {
+  const userId = event.context.session.user.id
+
   if (event.method === 'GET') {
     const filter = await getProjectAccessFilter(event)
-    const rows = await db.select().from(projects).where(filter).orderBy(desc(projects.updatedAt))
+    const teamId = await getUserActiveTeamId(event)
+    const rows = await db
+      .select({ project: projects, customerName: customers.name })
+      .from(projects)
+      .leftJoin(customers, eq(customers.id, projects.customerId))
+      .where(filter)
+      .orderBy(desc(projects.updatedAt))
     if (!rows.length) return []
 
     // Which columns count as finished, so the sidebar can say how much of a
@@ -26,7 +35,7 @@ export default defineEventHandler(async (event) => {
       })
       .from(projectColumns)
       .where(and(
-        inArray(projectColumns.projectId, rows.map(p => p.id)),
+        inArray(projectColumns.projectId, rows.map(r => r.project.id)),
         isNull(projectColumns.deletedAt)
       ))
       .orderBy(asc(projectColumns.position))
@@ -38,9 +47,14 @@ export default defineEventHandler(async (event) => {
       else byProject.set(column.projectId, [column])
     }
 
-    return rows.map((project) => {
+    return rows.map(({ project, customerName }) => {
       const own = byProject.get(project.id) ?? []
-      return { ...project, terminalColumnIds: terminalColumnIds(own) }
+      return {
+        ...project,
+        customerName,
+        audience: audienceFor(userId, teamId, project),
+        terminalColumnIds: terminalColumnIds(own)
+      }
     })
   }
 
@@ -49,9 +63,9 @@ export default defineEventHandler(async (event) => {
   }
 
   // POST — create project with the default kanban columns seeded.
-  const body = await readBody<{ name?: string }>(event)
-  const userId = event.context.session.user.id
+  const body = await readBody<{ name?: string, customerId?: string | null }>(event)
   const teamId = await getUserActiveTeamId(event)
+  const customer = body.customerId ? await requireOrgCustomer(body.customerId, teamId) : null
   const now = Date.now()
   const id = genId()
 
@@ -59,6 +73,7 @@ export default defineEventHandler(async (event) => {
     id,
     userId,
     teamId,
+    customerId: customer?.id ?? null,
     name: body.name?.trim() || 'Untitled project',
     createdAt: now,
     updatedAt: now
@@ -73,8 +88,13 @@ export default defineEventHandler(async (event) => {
   }))
   await db.insert(projectColumns).values(seeded)
 
-  await publishFromEvent(event, { type: 'projects' })
+  await publishFromEvent(event, { type: 'projects', projectId: id })
   // Same shape the list answers with, so a board created here counts its tasks
   // the same way as one that arrived on load.
-  return { ...project, terminalColumnIds: terminalColumnIds(seeded) }
+  return {
+    ...project!,
+    customerName: customer?.name ?? null,
+    audience: 'staff' as const,
+    terminalColumnIds: terminalColumnIds(seeded)
+  }
 })

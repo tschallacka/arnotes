@@ -13,6 +13,7 @@ const emit = defineEmits<{ openTask: [taskId: string] }>()
 const {
   board,
   boardColumns,
+  isCustomerView,
   columnTasks,
   visibleColumnTasks,
   commentCount,
@@ -159,10 +160,13 @@ const columnSignature = computed(() =>
   boardColumns.value.map(column => `${column.id}:${column.position}`).join(',')
 )
 
-watch(columnSignature, async () => {
+watch([columnSignature, isCustomerView], async () => {
   const cols = boardColumns.value
   await nextTick()
   destroySortables()
+  // A customer contact files tasks and talks about them; where work sits on
+  // the board is the team's to arrange, and the server refuses the move anyway.
+  if (isCustomerView.value) return
 
   if (boardEl.value) {
     columnSortable = Sortable.create(boardEl.value, {
@@ -701,7 +705,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onBoardKeydown))
       <!-- Column header — also the drag handle -->
       <header
         v-else
-        class="kanban-column-handle group/col flex cursor-grab items-center gap-2 px-3 pb-2 pt-2.5 active:cursor-grabbing"
+        class="kanban-column-handle group/col flex items-center gap-2 px-3 pb-2 pt-2.5"
+        :class="isCustomerView ? '' : 'cursor-grab active:cursor-grabbing'"
       >
         <span
           class="size-2 shrink-0 rounded-full"
@@ -721,9 +726,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onBoardKeydown))
         >
         <button
           v-else
-          class="min-w-0 max-w-full cursor-text truncate text-left text-sm font-semibold text-default"
+          class="min-w-0 max-w-full truncate text-left text-sm font-semibold text-default"
+          :class="isCustomerView ? 'cursor-default' : 'cursor-text'"
           :title="column.name"
-          @click.stop="startRename(column)"
+          @click.stop="isCustomerView || startRename(column)"
         >
           {{ column.name }}
         </button>
@@ -743,7 +749,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onBoardKeydown))
             aria-label="Add task"
             @click.stop="startCompose(column.id)"
           />
-          <UDropdownMenu :items="columnMenu(column)">
+          <UDropdownMenu
+            v-if="!isCustomerView"
+            :items="columnMenu(column)"
+          >
             <UButton
               icon="i-lucide-ellipsis"
               size="xs"
@@ -778,6 +787,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onBoardKeydown))
           <KanbanCard
             :task="task"
             :comment-count="commentCount(task.id)"
+            :readonly="isCustomerView"
             @open="emit('openTask', $event)"
             @restore="onRestoreTask"
             @purge="askPurgeTask"
@@ -827,7 +837,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onBoardKeydown))
     </section>
 
     <!-- Add column -->
-    <div class="kanban-add-column w-[19rem] shrink-0 self-start">
+    <div
+      v-if="!isCustomerView"
+      class="kanban-add-column w-[19rem] shrink-0 self-start"
+    >
       <input
         v-if="addingColumn"
         ref="newColumnEl"

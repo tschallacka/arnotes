@@ -5,7 +5,8 @@ import { findPublicProject } from '../../../utils/publicAccess'
 
 // A shared board, readable without a session: the columns and the cards on
 // them, and nothing else. Task updates stay behind the workspace — sharing a
-// board publishes the work, not the discussion around it.
+// board publishes the work, not the discussion around it — and so do internal
+// tasks.
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
   const project = await findPublicProject(id)
@@ -37,7 +38,9 @@ export default defineEventHandler(async (event) => {
         .from(projectTasks)
         .where(and(
           inArray(projectTasks.columnId, columns.map(c => c.id)),
-          isNull(projectTasks.deletedAt)
+          isNull(projectTasks.deletedAt),
+          // Anyone with the link reads at most what a customer would.
+          eq(projectTasks.visibility, 'customer')
         ))
         .orderBy(asc(projectTasks.position))
     : []

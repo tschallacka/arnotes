@@ -1,7 +1,8 @@
 import { db } from '../../db'
 import { projects, projectTasks } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { requireProject } from '../../utils/projects'
+import { requireProject, requireStaff } from '../../utils/projects'
+import { requireOrgCustomer } from '../../utils/customers'
 import { isAccentColor } from '#shared/utils/colors'
 import { closeTopic, publicProjectTopic, publishFromEvent } from '../../utils/realtime'
 import { removeTaskAttachments } from '../../utils/attachments'
@@ -9,6 +10,7 @@ import { removeTaskAttachments } from '../../utils/attachments'
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
   const project = await requireProject(event, id)
+  requireStaff(project)
 
   if (event.method === 'PUT') {
     const body = await readBody<{
@@ -16,8 +18,17 @@ export default defineEventHandler(async (event) => {
       isPublic?: boolean
       publicUntil?: number | null
       labelColor?: { label?: string, color?: string | null }
+      customerId?: string | null
     }>(event)
     const name = body.name?.trim()
+
+    // Moving a board between customers changes who outside the team can read
+    // it, so the new customer is checked against the board's own organisation.
+    const customerId = body.customerId === undefined
+      ? undefined
+      : body.customerId === null
+        ? null
+        : (await requireOrgCustomer(body.customerId, project.teamId)).id
 
     // Label colours are patched one label at a time rather than sent as a whole
     // map: two people colouring different labels on the same board would
@@ -42,6 +53,7 @@ export default defineEventHandler(async (event) => {
         ...(body.isPublic !== undefined && { isPublic: body.isPublic }),
         ...(body.publicUntil !== undefined && { publicUntil: body.publicUntil }),
         ...(labelColors !== undefined && { labelColors }),
+        ...(customerId !== undefined && { customerId }),
         updatedAt: Date.now()
       })
       .where(eq(projects.id, id))

@@ -1,12 +1,12 @@
 import { db } from '../../../db'
 import { projects, projectColumns } from '../../../db/schema'
 import { eq } from 'drizzle-orm'
-import { requireProject, projectColumnsOrdered, positionBetween, genId } from '../../../utils/projects'
+import { requireProject, requireStaff, projectColumnsOrdered, positionBetween, genId } from '../../../utils/projects'
 import { publishFromEvent } from '../../../utils/realtime'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
-  await requireProject(event, id)
+  requireStaff(await requireProject(event, id))
 
   const body = await readBody<{ name?: string, beforeId?: string | null, afterId?: string | null }>(event)
   const name = body.name?.trim() || 'New column'

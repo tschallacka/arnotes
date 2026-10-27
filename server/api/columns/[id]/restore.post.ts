@@ -1,7 +1,7 @@
 import { db } from '../../../db'
 import { projects, projectColumns, projectTasks } from '../../../db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
-import { requireColumn, renumberColumnTasks, RESTORED } from '../../../utils/projects'
+import { requireColumn, requireStaff, renumberColumnTasks, RESTORED } from '../../../utils/projects'
 import { publishFromEvent } from '../../../utils/realtime'
 
 // Brings a column back out of the board's trash, along with the tasks that went
@@ -12,6 +12,7 @@ import { publishFromEvent } from '../../../utils/realtime'
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
   const { column, project } = await requireColumn(event, id, { includeDeleted: true })
+  requireStaff(project)
 
   if (!column.deletedAt) return { ok: true, column, restoredTasks: 0 }
 

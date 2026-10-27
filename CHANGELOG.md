@@ -4,6 +4,11 @@ All notable changes to Arnotes are documented in this file.
 
 ## Unreleased
 
+- Customers: an organisation can add customers, file projects under them, and invite their people with a single-use link. Contacts see the customer's boards in their personal workspace, can file tasks and post updates, and see only what is marked as visible to the customer
+- Tasks and updates have a visibility. Tasks are visible to the customer by default and can be made **Internal**; updates start internal and are shared on purpose. Internal tasks are also left off public board links
+- The first account on an instance is its admin and owns an organisation from the start; other accounts create organisations only once the admin allows it, under **Accounts on this instance**. On an existing instance, the oldest account becomes the admin at startup
+- An invitation link lets its recipient create an account even where `ALLOW_SIGN_UP=false`
+- The database gains `customers`, `customer_members` and `customer_invitations` tables, `customer_id` on `projects`, `visibility` on `project_tasks` and `task_comments`, and `is_instance_admin` and `can_create_organizations` on `user`
 - Passkeys: add one under **Settings → Security**, then sign in with Touch ID, Windows Hello, a phone or a security key. On by default; no outside service needed
 - Two-factor authentication with an authenticator app and one-time backup codes, set up under **Settings → Security**
 - "Email me a code" sign-in, when an SMTP server is configured (`NUXT_PUBLIC_EMAIL_CODE_ENABLED` and `SMTP_*`). Accounts with two-factor on cannot use it

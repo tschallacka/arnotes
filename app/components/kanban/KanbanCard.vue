@@ -10,10 +10,13 @@ const props = defineProps<{
     title: string
     description: string
     tags: string[]
+    visibility?: 'internal' | 'customer'
     deletedAt?: number | null
     deletedVia?: 'ui' | 'mcp' | 'ai' | null
   }
   commentCount?: number
+  // A customer contact's board: labels are shown, not recoloured.
+  readonly?: boolean
 }>()
 
 defineEmits<{ open: [taskId: string], restore: [taskId: string], purge: [taskId: string] }>()
@@ -44,9 +47,12 @@ const due = computed(() => details.value.due)
 const dueLabel = computed(() => due.value === null ? '' : formatDateMention(new Date(due.value).toISOString()))
 const overdue = computed(() => due.value !== null && due.value < Date.now())
 
+// Only staff are ever sent an internal task, so the mark needs no audience check.
+const internal = computed(() => props.task.visibility === 'internal')
+
 // One row of small print under the card, or none at all.
 const hasMeta = computed(() =>
-  props.task.tags.length > 0 || !!checklist.value || due.value !== null || !!props.commentCount
+  props.task.tags.length > 0 || !!checklist.value || due.value !== null || !!props.commentCount || internal.value
 )
 </script>
 
@@ -88,7 +94,7 @@ const hasMeta = computed(() =>
         v-for="tag in task.tags.slice(0, 3)"
         :key="tag"
         :tag="tag"
-        :editable="!trashed"
+        :editable="!trashed && !readonly"
         chip-class="text-[0.6875rem]"
       />
       <span
@@ -99,6 +105,18 @@ const hasMeta = computed(() =>
       </span>
 
       <span class="ml-auto flex shrink-0 items-center gap-2 text-[0.6875rem] text-dimmed">
+        <span
+          v-if="internal"
+          class="flex items-center gap-1 text-warning"
+          title="Internal: the customer does not see this task"
+        >
+          <UIcon
+            name="i-lucide-lock"
+            class="size-3"
+          />
+          Internal
+        </span>
+
         <span
           v-if="due !== null"
           class="flex items-center gap-1"

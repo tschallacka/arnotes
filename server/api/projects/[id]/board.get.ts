@@ -2,6 +2,7 @@ import { db } from '../../../db'
 import { projectColumns, projectTasks, taskComments } from '../../../db/schema'
 import { and, eq, asc, inArray, count, isNull, isNotNull } from 'drizzle-orm'
 import { requireProject } from '../../../utils/projects'
+import { commentVisibilityFilter, taskVisibilityFilter } from '../../../utils/auth-helpers'
 
 // Full board in one payload: columns ordered, tasks grouped by column, and the
 // per-task update count the cards render as a badge.
@@ -11,11 +12,16 @@ import { requireProject } from '../../../utils/projects'
 // back either way — the header needs to know there is something in the trash
 // before the user has asked to see it, which is the whole point when the delete
 // happened overnight through an agent.
+//
+// A customer contact gets the same shape with everything internal left out:
+// internal tasks, internal comments in the counts, and the trash, which is the
+// team's own housekeeping.
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
-  await requireProject(event, id)
+  const project = await requireProject(event, id)
+  const isCustomer = project.audience === 'customer'
 
-  const includeTrashed = getQuery(event).trashed === '1'
+  const includeTrashed = !isCustomer && getQuery(event).trashed === '1'
   const liveColumns = isNull(projectColumns.deletedAt)
   const liveTasks = isNull(projectTasks.deletedAt)
 
@@ -37,7 +43,8 @@ export default defineEventHandler(async (event) => {
         .from(projectTasks)
         .where(and(
           inArray(projectTasks.columnId, columns.map(c => c.id)),
-          includeTrashed ? undefined : liveTasks
+          includeTrashed ? undefined : liveTasks,
+          taskVisibilityFilter(project.audience)
         ))
         .orderBy(asc(projectTasks.position))
     : []
@@ -46,7 +53,10 @@ export default defineEventHandler(async (event) => {
     ? await db
         .select({ taskId: taskComments.taskId, total: count() })
         .from(taskComments)
-        .where(inArray(taskComments.taskId, tasks.map(t => t.id)))
+        .where(and(
+          inArray(taskComments.taskId, tasks.map(t => t.id)),
+          commentVisibilityFilter(project.audience)
+        ))
         .groupBy(taskComments.taskId)
     : []
 
@@ -54,20 +64,26 @@ export default defineEventHandler(async (event) => {
   // even when the trashed rows were not asked for. A live task never sits in a
   // trashed column — deleting one hands its tasks to a neighbour — so the two
   // counts do not overlap.
-  const [trashedTasks] = await db
-    .select({ total: count() })
-    .from(projectTasks)
-    .where(and(eq(projectTasks.projectId, id), isNotNull(projectTasks.deletedAt)))
+  let trashedCount = 0
+  if (!isCustomer) {
+    const [trashedTasks] = await db
+      .select({ total: count() })
+      .from(projectTasks)
+      .where(and(eq(projectTasks.projectId, id), isNotNull(projectTasks.deletedAt)))
 
-  const [trashedColumns] = await db
-    .select({ total: count() })
-    .from(projectColumns)
-    .where(and(eq(projectColumns.projectId, id), isNotNull(projectColumns.deletedAt)))
+    const [trashedColumns] = await db
+      .select({ total: count() })
+      .from(projectColumns)
+      .where(and(eq(projectColumns.projectId, id), isNotNull(projectColumns.deletedAt)))
+
+    trashedCount = Number(trashedTasks?.total ?? 0) + Number(trashedColumns?.total ?? 0)
+  }
 
   return {
+    audience: project.audience,
     columns,
     tasks,
     commentCounts: Object.fromEntries(counts.map(c => [c.taskId, Number(c.total)])),
-    trashedCount: Number(trashedTasks?.total ?? 0) + Number(trashedColumns?.total ?? 0)
+    trashedCount
   }
 })

@@ -77,7 +77,7 @@ function announceWrite(tool: { scope: ApiKeyScope }, value: unknown, context: Ap
     // The tools answer with the note they touched, either as the result itself
     // or nested under `note`; naming it also reaches its public readers.
     const noteId = record.id ?? asRecord(record.note).id
-    publish(topic, { type: 'notes', ...(typeof noteId === 'string' && { noteId }) })
+    void publish(topic, { type: 'notes', ...(typeof noteId === 'string' && { noteId }) })
     // A trashed note stops being readable over its public link.
     if (record.trashed === true && typeof noteId === 'string') closeTopic(publicNoteTopic(noteId))
     return
@@ -95,7 +95,7 @@ function announceWrite(tool: { scope: ApiKeyScope }, value: unknown, context: Ap
     // reloads the open board along with it. The board-shaped results carry
     // their own id, which a renamed board's readers need.
     : { type: 'projects', ...(typeof record.id === 'string' && { projectId: record.id }) }
-  publish(topic, event)
+  void publish(topic, event)
 }
 
 /** Tool failures are reported inside the result so the model can read and retry them. */

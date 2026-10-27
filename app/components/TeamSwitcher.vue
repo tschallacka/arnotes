@@ -2,12 +2,16 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 
 const { teams, activeTeam, setActiveTeam } = useTeams()
+const { isInstanceAdmin, canCreateOrganizations } = useAuth()
 const { refreshNotes } = useNotes()
 const { refresh: refreshProjects } = useProjects()
+const { refresh: refreshCustomers } = useCustomers()
 
 const showManageModal = ref(false)
 const showCreateModal = ref(false)
 const showJoinModal = ref(false)
+const showCustomersModal = ref(false)
+const showAdminModal = ref(false)
 
 const route = useRoute()
 
@@ -15,6 +19,7 @@ async function handleSelectTeam(id: string | null) {
   await setActiveTeam(id)
   await refreshNotes()
   await refreshProjects()
+  await refreshCustomers()
   // The board that was open belongs to the workspace we just left; its route
   // would keep pointing at an id the new workspace does not have.
   if (route.path.startsWith('/projects/')) navigateTo('/projects', { replace: true })
@@ -51,11 +56,15 @@ const dropdownItems = computed<DropdownMenuItem[]>(() => {
     type: 'separator'
   })
 
-  items.push({
-    label: 'Create Team',
-    icon: 'i-lucide-plus',
-    onSelect: () => { showCreateModal.value = true }
-  })
+  // Owning an organisation is handed out by the instance admin; the server
+  // refuses the rest, so the menu does not offer it to them.
+  if (canCreateOrganizations.value) {
+    items.push({
+      label: 'Create Team',
+      icon: 'i-lucide-plus',
+      onSelect: () => { showCreateModal.value = true }
+    })
+  }
 
   items.push({
     label: 'Join Team with Code',
@@ -65,9 +74,22 @@ const dropdownItems = computed<DropdownMenuItem[]>(() => {
 
   if (activeTeam.value) {
     items.push({
+      label: 'Customers',
+      icon: 'i-lucide-building-2',
+      onSelect: () => { showCustomersModal.value = true }
+    })
+    items.push({
       label: 'Team Settings & Members',
       icon: 'i-lucide-settings-2',
       onSelect: () => { showManageModal.value = true }
+    })
+  }
+
+  if (isInstanceAdmin.value) {
+    items.push({
+      label: 'Accounts on this instance',
+      icon: 'i-lucide-shield',
+      onSelect: () => { showAdminModal.value = true }
     })
   }
 
@@ -112,6 +134,11 @@ const dropdownItems = computed<DropdownMenuItem[]>(() => {
       v-model:open="showManageModal"
       v-model:create-open="showCreateModal"
       v-model:join-open="showJoinModal"
+    />
+    <CustomersModal v-model:open="showCustomersModal" />
+    <AdminUsersModal
+      v-if="isInstanceAdmin"
+      v-model:open="showAdminModal"
     />
   </div>
 </template>

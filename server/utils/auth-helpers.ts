@@ -1,8 +1,8 @@
 import type { H3Event } from 'h3'
 import { randomInt } from 'crypto'
 import { db } from '../db'
-import { member, notes, projects } from '../db/schema'
-import { eq, and, isNull } from 'drizzle-orm'
+import { customerMembers, member, notes, projects, projectTasks, taskComments } from '../db/schema'
+import { eq, and, inArray, isNull, or } from 'drizzle-orm'
 
 export async function getUserActiveTeamId(event: H3Event): Promise<string | null> {
   const session = event.context.session
@@ -68,6 +68,55 @@ export function projectAccessFilter(userId: string, teamId: string | null) {
   return teamId
     ? eq(projects.teamId, teamId)
     : and(eq(projects.userId, userId), isNull(projects.teamId))
+}
+
+/** The customers a user logs in for, as a contact. */
+export async function customerIdsOf(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ customerId: customerMembers.customerId })
+    .from(customerMembers)
+    .where(eq(customerMembers.userId, userId))
+  return rows.map(r => r.customerId)
+}
+
+/**
+ * Projects a browser session can reach: `projectAccessFilter`, plus — in the
+ * personal workspace — the projects of every customer the user is a contact of.
+ *
+ * MCP keys and the in-app assistant keep using `projectAccessFilter`, so a
+ * customer project is never reachable through a contact's key or assistant.
+ * Their output is not filtered by visibility, and must not need to be.
+ */
+export function sessionProjectFilter(userId: string, teamId: string | null, customerIds: string[]) {
+  const own = projectAccessFilter(userId, teamId)
+  if (teamId || !customerIds.length) return own
+  return or(own, inArray(projects.customerId, customerIds))
+}
+
+/**
+ * How the caller relates to a project they can reach. Staff see everything;
+ * a customer contact sees only what is marked visible to customers.
+ */
+export type Audience = 'staff' | 'customer'
+
+export function audienceFor(
+  userId: string,
+  activeTeamId: string | null,
+  project: { userId: string, teamId: string | null }
+): Audience {
+  if (activeTeamId && project.teamId === activeTeamId) return 'staff'
+  if (!project.teamId && project.userId === userId) return 'staff'
+  return 'customer'
+}
+
+/** Narrows a task query to what the audience may read; staff read everything. */
+export function taskVisibilityFilter(audience: Audience) {
+  return audience === 'customer' ? eq(projectTasks.visibility, 'customer') : undefined
+}
+
+/** The same rule for comments. */
+export function commentVisibilityFilter(audience: Audience) {
+  return audience === 'customer' ? eq(taskComments.visibility, 'customer') : undefined
 }
 
 /**

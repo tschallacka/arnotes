@@ -2,7 +2,7 @@
 import { columnDotAttrs } from '~/utils/tagColors'
 import { format } from 'date-fns'
 import { relativeTime } from '~/composables/useRelativeTime'
-import type { TaskComment } from '~/composables/useProjects'
+import type { TaskComment, Visibility } from '~/composables/useProjects'
 
 interface Task {
   id: string
@@ -10,6 +10,7 @@ interface Task {
   title: string
   description: string
   tags: string[]
+  visibility?: Visibility
   createdAt: number
   updatedAt: number
 }
@@ -22,6 +23,7 @@ const { session } = useAuth()
 const toast = useToast()
 const {
   activeProject,
+  isCustomerView,
   boardColumns,
   boardTagCounts,
   updateTask,
@@ -31,9 +33,14 @@ const {
   loadComments,
   addComment,
   editComment,
+  setCommentVisibility,
   deleteComment,
   clearComments
 } = useProjects()
+
+// A customer contact reads the task and talks about it; the task itself is the
+// team's to edit, and the server refuses the rest.
+const readonly = isCustomerView
 
 function fullDate(ts: number) {
   return format(new Date(ts), 'PPp')
@@ -113,6 +120,9 @@ function resetWidth() {
 
 // Declared up here because the task-switch watcher below resets them.
 const commentDraft = ref('')
+// Staff updates start internal: a note to the team is the common case, and
+// telling the customer is the step taken on purpose.
+const commentVisibility = ref<Visibility>('internal')
 // The update being rewritten in place, if any.
 const editingId = ref<string | null>(null)
 const editDraft = ref('')
@@ -194,6 +204,7 @@ watch(() => props.task?.id, (id, previousId) => {
   })
 
   commentDraft.value = ''
+  commentVisibility.value = 'internal'
   cancelEdit()
   tagDraft.value = ''
   tagHighlight.value = -1
@@ -358,8 +369,30 @@ async function sendComment() {
   const body = commentDraft.value.trim()
   if (!body || !props.task) return
   commentDraft.value = ''
-  await addComment(props.task.id, body)
+  await addComment(props.task.id, body, readonly.value ? undefined : commentVisibility.value)
   scrollUpdatesToEnd()
+}
+
+// ─── Visibility ────────────────────────────────────────────
+
+const taskInternal = computed(() => shownTask.value?.visibility === 'internal')
+
+async function toggleTaskVisibility() {
+  const task = props.task
+  if (!task || readonly.value) return
+  try {
+    await updateTask(task.id, { visibility: task.visibility === 'internal' ? 'customer' : 'internal' })
+  } catch {
+    toast.add({ title: 'Could not change who sees this task', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+async function toggleCommentVisibility(comment: TaskComment) {
+  try {
+    await setCommentVisibility(comment.taskId, comment.id, comment.visibility === 'internal' ? 'customer' : 'internal')
+  } catch {
+    toast.add({ title: 'Could not change who sees this update', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
 }
 
 watch(updatesOpen, (isOpen) => {
@@ -433,8 +466,16 @@ async function confirmDeleteComment() {
 }
 
 function commentMenu(comment: TaskComment) {
+  const share = readonly.value
+    ? []
+    : [{
+        label: comment.visibility === 'internal' ? 'Show to customer' : 'Make internal',
+        icon: comment.visibility === 'internal' ? 'i-lucide-eye' : 'i-lucide-lock',
+        onSelect: () => toggleCommentVisibility(comment)
+      }]
   return [[
-    { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => startEdit(comment) }
+    { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => startEdit(comment) },
+    ...share
   ], [
     {
       label: 'Delete',
@@ -485,14 +526,14 @@ async function confirmDelete() {
 
 const menuItems = computed(() => [[
   { label: 'Reset panel width', icon: 'i-lucide-rotate-ccw', onSelect: resetWidth }
-], [
-  {
-    label: 'Delete task',
-    icon: 'i-lucide-trash-2',
-    color: 'error' as const,
-    onSelect: () => { deleteOpen.value = true }
-  }
-]])
+], ...(readonly.value
+  ? []
+  : [[{
+      label: 'Delete task',
+      icon: 'i-lucide-trash-2',
+      color: 'error' as const,
+      onSelect: () => { deleteOpen.value = true }
+    }]])])
 </script>
 
 <template>
@@ -528,7 +569,21 @@ const menuItems = computed(() => [[
                same two vertical lines as every dot and label in the list.
                `items-center` because the theme starts menu items at the top,
                which leaves the dots riding above their labels. -->
+          <UBadge
+            v-if="readonly"
+            color="neutral"
+            variant="soft"
+            class="shrink-0 gap-1.5"
+          >
+            <span
+              class="size-2 shrink-0 rounded-full"
+              :class="columnDotAttrs(column ?? { name: '' }).class"
+              :style="columnDotAttrs(column ?? { name: '' }).style"
+            />
+            {{ column?.name ?? 'No column' }}
+          </UBadge>
           <UDropdownMenu
+            v-else
             :items="stateItems"
             :content="{ align: 'start', collisionPadding: 12 }"
             :ui="{ item: 'items-center' }"
@@ -573,6 +628,19 @@ const menuItems = computed(() => [[
           </span>
 
           <UButton
+            v-if="!readonly"
+            :icon="taskInternal ? 'i-lucide-lock' : 'i-lucide-eye'"
+            size="xs"
+            :color="taskInternal ? 'warning' : 'neutral'"
+            variant="soft"
+            :label="taskInternal ? 'Internal' : 'Customer can see'"
+            :title="taskInternal
+              ? 'Only your organisation sees this task. Click to show it to the customer.'
+              : 'The customer and the public link see this task. Click to make it internal.'"
+            @click="toggleTaskVisibility"
+          />
+
+          <UButton
             icon="i-lucide-message-square"
             size="xs"
             color="neutral"
@@ -615,6 +683,7 @@ const menuItems = computed(() => [[
               autoresize
               variant="none"
               placeholder="Task title"
+              :readonly="readonly"
               class="w-full"
               :ui="{ base: 'px-0 py-0 text-lg font-semibold leading-snug resize-none' }"
               @keydown.enter.prevent="($event.target as HTMLTextAreaElement).blur()"
@@ -625,12 +694,15 @@ const menuItems = computed(() => [[
                 v-for="tag in shownTask.tags"
                 :key="tag"
                 :tag="tag"
-                editable
-                removable
+                :editable="!readonly"
+                :removable="!readonly"
                 chip-class="text-xs"
                 @remove="removeTag"
               />
-              <div class="relative min-w-24 flex-1">
+              <div
+                v-if="!readonly"
+                class="relative min-w-24 flex-1"
+              >
                 <input
                   v-model="tagDraft"
                   :placeholder="shownTask.tags.length ? 'Add label…' : 'Add a label…'"
@@ -666,7 +738,14 @@ const menuItems = computed(() => [[
 
           <!-- Description: the notes editor, bounded so it keeps its own scroll -->
           <div class="flex min-h-0 flex-1 flex-col border-t border-default">
+            <div
+              v-if="readonly"
+              class="min-h-0 flex-1 overflow-y-auto"
+            >
+              <ReadOnlyRichText :content="shownTask.description" />
+            </div>
             <RichEditor
+              v-else
               v-model="editorContent"
               :upload-image="uploadImage"
               placeholder="Add a description… (@ for dates, / for commands)"
@@ -766,6 +845,18 @@ const menuItems = computed(() => [[
                 >
                   (edited)
                 </span>
+                <!-- Contacts are never sent internal updates, so only staff see this. -->
+                <span
+                  v-if="comment.visibility === 'internal'"
+                  class="flex shrink-0 items-center gap-0.5 text-[0.6875rem] text-warning"
+                  title="Internal: the customer does not see this update"
+                >
+                  <UIcon
+                    name="i-lucide-lock"
+                    class="size-3"
+                  />
+                  Internal
+                </span>
 
                 <UDropdownMenu
                   v-if="canChange(comment) && editingId !== comment.id"
@@ -831,8 +922,19 @@ const menuItems = computed(() => [[
           <UpdateComposer
             ref="composer"
             v-model="commentDraft"
-            placeholder="Add an update…"
+            :placeholder="readonly || commentVisibility === 'customer' ? 'Write to the team and the customer…' : 'Add an internal update…'"
             @submit="sendComment"
+          />
+          <UButton
+            v-if="!readonly"
+            :icon="commentVisibility === 'internal' ? 'i-lucide-lock' : 'i-lucide-eye'"
+            size="xs"
+            :color="commentVisibility === 'internal' ? 'warning' : 'neutral'"
+            variant="ghost"
+            class="shrink-0"
+            :aria-label="commentVisibility === 'internal' ? 'Internal update: click to show it to the customer' : 'Customer can see: click to make it internal'"
+            :title="commentVisibility === 'internal' ? 'Internal update: click to show it to the customer' : 'Customer can see: click to make it internal'"
+            @click.stop="commentVisibility = commentVisibility === 'internal' ? 'customer' : 'internal'"
           />
           <UButton
             icon="i-lucide-arrow-up"

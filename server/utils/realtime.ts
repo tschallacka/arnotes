@@ -9,6 +9,9 @@
 // nothing else.
 import type { Peer } from 'crossws'
 import type { H3Event } from 'h3'
+import { eq } from 'drizzle-orm'
+import { db } from '../db'
+import { projects } from '../db/schema'
 import { getUserActiveTeamId } from './auth-helpers'
 
 /**
@@ -38,6 +41,14 @@ export function workspaceTopic(userId: string, teamId: string | null): string {
 }
 
 /**
+ * A customer's contacts work from their own personal workspace, so they listen
+ * on the customer's topic as well, one per customer they log in for.
+ */
+export function customerTopic(customerId: string): string {
+  return `customer:${customerId}`
+}
+
+/**
  * Topics for the public read-only pages. A shared link is its own audience:
  * the readers are anonymous and belong to no workspace, so they subscribe to
  * the one note or board they were given rather than to a workspace feed.
@@ -58,15 +69,15 @@ function publicTopicFor(event: RealtimeEvent): string | null {
 }
 
 interface Subscription {
-  topic: string
+  topics: string[]
   /** The tab that caused a change ignores its own echo. */
   clientId: string | null
 }
 
 const subscriptions = new Map<Peer, Subscription>()
 
-export function subscribePeer(peer: Peer, topic: string, clientId: string | null) {
-  subscriptions.set(peer, { topic, clientId })
+export function subscribePeer(peer: Peer, topics: string | string[], clientId: string | null) {
+  subscriptions.set(peer, { topics: Array.isArray(topics) ? topics : [topics], clientId })
 }
 
 export function unsubscribePeer(peer: Peer) {
@@ -85,7 +96,7 @@ export function peerCount(): number {
  */
 export function closeTopic(topic: string, code = 4404, reason = 'Not shared') {
   for (const [peer, subscription] of subscriptions) {
-    if (subscription.topic !== topic) continue
+    if (!subscription.topics.includes(topic)) continue
     subscriptions.delete(peer)
     try {
       peer.close(code, reason)
@@ -95,9 +106,10 @@ export function closeTopic(topic: string, code = 4404, reason = 'Not shared') {
   }
 }
 
-function fanout(topic: string, payload: string, originClientId?: string | null) {
+/** Sends once to every peer on any of the topics; a peer on two hears it once. */
+function fanout(topics: Set<string>, payload: string, originClientId?: string | null) {
   for (const [peer, subscription] of subscriptions) {
-    if (subscription.topic !== topic) continue
+    if (!subscription.topics.some(topic => topics.has(topic))) continue
     if (originClientId && subscription.clientId === originClientId) continue
     try {
       peer.send(payload)
@@ -108,20 +120,46 @@ function fanout(topic: string, payload: string, originClientId?: string | null) 
 }
 
 /**
- * Sends an event to every client in a workspace except the one that caused it,
- * and to anyone reading the shared link of the note or board it names — a
- * public page is a viewer of the same data, just without a session.
+ * Everyone who reads a board, wherever the change came from: its own workspace,
+ * and the contacts of its customer. A contact's comment has to reach the team,
+ * and the team's work has to reach the contact, though neither is the other's
+ * workspace. A board that is gone has no audience left to tell.
  */
-export function publish(topic: string, event: RealtimeEvent, originClientId?: string | null) {
-  if (!subscriptions.size) return
-  const payload = JSON.stringify(event)
+async function projectTopics(projectId: string): Promise<string[]> {
+  const [project] = await db
+    .select({ userId: projects.userId, teamId: projects.teamId, customerId: projects.customerId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+  if (!project) return []
+  const topics = [workspaceTopic(project.userId, project.teamId)]
+  if (project.customerId) topics.push(customerTopic(project.customerId))
+  return topics
+}
 
-  fanout(topic, payload, originClientId)
+/**
+ * Sends an event to every client in a workspace except the one that caused it,
+ * to the readers of the board it names, and to anyone reading the shared link
+ * of the note or board it names — a public page is a viewer of the same data,
+ * just without a session. Readers of a shared link are never the origin of a
+ * change, and a board that is not shared simply has no subscribers.
+ *
+ * The event only says that something changed. What each reader may see is
+ * decided again when they refetch, so an internal change costs a contact a
+ * refetch that comes back the same, and nothing more.
+ */
+export async function publish(topic: string, event: RealtimeEvent, originClientId?: string | null) {
+  if (!subscriptions.size) return
+  const topics = new Set([topic])
+
+  const projectId = event.type === 'notes' ? undefined : event.projectId
+  if (projectId) {
+    for (const extra of await projectTopics(projectId).catch(() => [])) topics.add(extra)
+  }
 
   const publicTopic = publicTopicFor(event)
-  // Readers of a shared link are never the origin of a change, so nothing is
-  // excluded here. A board that is not shared simply has no subscribers.
-  if (publicTopic) fanout(publicTopic, payload)
+  if (publicTopic) topics.add(publicTopic)
+
+  fanout(topics, JSON.stringify(event), originClientId)
 }
 
 /**
@@ -134,5 +172,5 @@ export async function publishFromEvent(event: H3Event, realtimeEvent: RealtimeEv
   const session = event.context.session
   if (!session) return
   const topic = workspaceTopic(session.user.id, await getUserActiveTeamId(event))
-  publish(topic, realtimeEvent, getRequestHeader(event, 'x-client-id') ?? null)
+  await publish(topic, realtimeEvent, getRequestHeader(event, 'x-client-id') ?? null)
 }

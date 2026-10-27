@@ -1,7 +1,7 @@
 import { db } from '../../db'
-import { projects, projectTasks } from '../../db/schema'
+import { projects, projectTasks, VISIBILITIES, type Visibility } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { requireTask, requireColumn, columnTasksOrdered, positionBetween, uiDeletion } from '../../utils/projects'
+import { requireTask, requireColumn, requireStaff, columnTasksOrdered, positionBetween, uiDeletion } from '../../utils/projects'
 import { publishFromEvent } from '../../utils/realtime'
 import { removeTaskAttachments } from '../../utils/attachments'
 
@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   // Widened for the delete below, which has to be able to find a card that is
   // already in the trash in order to remove it for good.
   const { task, project } = await requireTask(event, id, { includeDeleted: true })
+  requireStaff(project)
 
   if (event.method === 'DELETE') {
     // Same two stages as a note: the first delete puts the card in the board's
@@ -41,6 +42,7 @@ export default defineEventHandler(async (event) => {
     title?: string
     description?: string
     tags?: string[]
+    visibility?: Visibility
     columnId?: string
     beforeId?: string | null
     afterId?: string | null
@@ -50,6 +52,7 @@ export default defineEventHandler(async (event) => {
     title?: string
     description?: string
     tags?: string[]
+    visibility?: Visibility
     columnId?: string
     previousColumnId?: string | null
     position?: number
@@ -60,6 +63,10 @@ export default defineEventHandler(async (event) => {
   if (body.title !== undefined) patch.title = body.title.trim() || 'Untitled'
   if (body.description !== undefined) patch.description = body.description
   if (body.tags !== undefined) patch.tags = [...new Set(body.tags.map(t => t.trim().toLowerCase()).filter(Boolean))].slice(0, 10)
+  if (body.visibility !== undefined) {
+    if (!VISIBILITIES.includes(body.visibility)) throw createError({ statusCode: 400, message: 'Unknown visibility' })
+    patch.visibility = body.visibility
+  }
 
   let targetColumnId = task.columnId
   if (body.columnId && body.columnId !== task.columnId) {

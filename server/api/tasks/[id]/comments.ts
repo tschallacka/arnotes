@@ -1,12 +1,14 @@
 import { db } from '../../../db'
-import { taskComments, user, apiKeys } from '../../../db/schema'
-import { eq, asc } from 'drizzle-orm'
+import { taskComments, user, apiKeys, VISIBILITIES } from '../../../db/schema'
+import type { Visibility } from '../../../db/schema'
+import { and, eq, asc } from 'drizzle-orm'
 import { requireTask, genId } from '../../../utils/projects'
+import { commentVisibilityFilter } from '../../../utils/auth-helpers'
 import { publishFromEvent } from '../../../utils/realtime'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
-  const { task: _task } = await requireTask(event, id)
+  const { task: _task, project } = await requireTask(event, id)
 
   if (event.method === 'GET') {
     return db
@@ -15,6 +17,7 @@ export default defineEventHandler(async (event) => {
         taskId: taskComments.taskId,
         userId: taskComments.userId,
         body: taskComments.body,
+        visibility: taskComments.visibility,
         createdAt: taskComments.createdAt,
         editedAt: taskComments.editedAt,
         createdVia: taskComments.createdVia,
@@ -26,7 +29,7 @@ export default defineEventHandler(async (event) => {
       .from(taskComments)
       .leftJoin(user, eq(user.id, taskComments.userId))
       .leftJoin(apiKeys, eq(apiKeys.id, taskComments.apiKeyId))
-      .where(eq(taskComments.taskId, id))
+      .where(and(eq(taskComments.taskId, id), commentVisibilityFilter(project.audience)))
       .orderBy(asc(taskComments.createdAt))
   }
 
@@ -34,15 +37,20 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 405, message: 'Method not allowed' })
   }
 
-  const payload = await readBody<{ body?: string }>(event)
+  const payload = await readBody<{ body?: string, visibility?: Visibility }>(event)
   const body = payload.body?.trim()
   if (!body) throw createError({ statusCode: 400, message: 'Comment body is required' })
+  if (payload.visibility !== undefined && !VISIBILITIES.includes(payload.visibility)) {
+    throw createError({ statusCode: 400, message: 'Unknown visibility' })
+  }
 
   const [comment] = await db.insert(taskComments).values({
     id: genId(),
     taskId: id,
     userId: event.context.session.user.id,
     body,
+    // A contact writes to the team in the open; staff choose, and start internal.
+    visibility: project.audience === 'customer' ? 'customer' : (payload.visibility ?? 'internal'),
     createdVia: 'ui',
     createdAt: Date.now()
   }).returning()

@@ -1,8 +1,23 @@
 import { auth } from '../lib/auth'
 
+// Everything under these needs a session. `/api/invitations` is deliberately not
+// here: an invite link has to be readable before its recipient has an account.
+const PROTECTED_PREFIXES = [
+  '/api/notes',
+  '/api/settings',
+  '/api/ai',
+  '/api/chat',
+  '/api/teams',
+  '/api/projects',
+  '/api/tasks',
+  '/api/columns',
+  '/api/customers',
+  '/api/admin'
+]
+
 export default defineEventHandler(async (event) => {
   const path = event.path
-  if (!path.startsWith('/api/notes') && !path.startsWith('/api/settings') && !path.startsWith('/api/ai') && !path.startsWith('/api/chat') && !path.startsWith('/api/teams') && !path.startsWith('/api/projects') && !path.startsWith('/api/tasks') && !path.startsWith('/api/columns')) return
+  if (!PROTECTED_PREFIXES.some(prefix => path.startsWith(prefix))) return
 
   const session = await auth.api.getSession({ headers: event.headers })
   if (!session) throw createError({ statusCode: 401, message: 'Unauthorized' })

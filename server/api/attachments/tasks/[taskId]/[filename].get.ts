@@ -1,15 +1,16 @@
 import { join, extname } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { db } from '#server/db'
-import { projects, projectTasks } from '#server/db/schema'
-import { eq } from 'drizzle-orm'
+import { customerMembers, projects, projectTasks } from '#server/db/schema'
+import { and, eq } from 'drizzle-orm'
 import { auth } from '#server/lib/auth'
 import { isTeamMember } from '#server/utils/auth-helpers'
 import { ATTACHMENT_MIME, SAFE_FILENAME, SAFE_ID, taskAttachmentDir } from '#server/utils/attachments'
 
 // Serves an image uploaded into a task description. Readable by whoever can
-// read the board: its owner, the team it belongs to, or anyone while the board
-// is shared publicly — the public board page renders the same descriptions.
+// read the task: its board's owner or team, a contact of the board's customer
+// when the task is shared with customers, or anyone while the board is shared
+// publicly — the public board page renders the same shared descriptions.
 export default defineEventHandler(async (event) => {
   const taskId = getRouterParam(event, 'taskId')
   const filename = getRouterParam(event, 'filename')
@@ -22,8 +23,10 @@ export default defineEventHandler(async (event) => {
     .select({
       userId: projects.userId,
       teamId: projects.teamId,
+      customerId: projects.customerId,
       isPublic: projects.isPublic,
-      publicUntil: projects.publicUntil
+      publicUntil: projects.publicUntil,
+      visibility: projectTasks.visibility
     })
     .from(projectTasks)
     .innerJoin(projects, eq(projects.id, projectTasks.projectId))
@@ -31,12 +34,16 @@ export default defineEventHandler(async (event) => {
 
   if (!row) throw createError({ statusCode: 404, message: 'Not found' })
 
-  const isPublic = row.isPublic && (!row.publicUntil || row.publicUntil > Date.now())
+  const sharedWithCustomers = row.visibility === 'customer'
+  const isPublic = sharedWithCustomers && row.isPublic && (!row.publicUntil || row.publicUntil > Date.now())
   if (!isPublic) {
     const session = await auth.api.getSession({ headers: event.headers })
-    const allowed = session
-      && (session.user.id === row.userId
-        || (row.teamId ? await isTeamMember(session.user.id, row.teamId) : false))
+    const userId = session?.user.id
+    const allowed = userId !== undefined && (
+      userId === row.userId
+      || (row.teamId ? await isTeamMember(userId, row.teamId) : false)
+      || (sharedWithCustomers && row.customerId ? await isCustomerContact(userId, row.customerId) : false)
+    )
 
     if (!allowed) throw createError({ statusCode: 403, message: 'Forbidden' })
   }
@@ -52,3 +59,11 @@ export default defineEventHandler(async (event) => {
 
   return readFileSync(filePath)
 })
+
+async function isCustomerContact(userId: string, customerId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: customerMembers.id })
+    .from(customerMembers)
+    .where(and(eq(customerMembers.userId, userId), eq(customerMembers.customerId, customerId)))
+  return Boolean(row)
+}

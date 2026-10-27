@@ -2,19 +2,26 @@ import type { H3Event } from 'h3'
 import { db } from '../db'
 import { projects, projectColumns, projectTasks } from '../db/schema'
 import { eq, and, asc, isNull } from 'drizzle-orm'
-import { getUserActiveTeamId, projectAccessFilter } from './auth-helpers'
+import { audienceFor, customerIdsOf, getUserActiveTeamId, sessionProjectFilter } from './auth-helpers'
+import type { Audience } from './auth-helpers'
 
 export function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2)
 }
 
 // Same scoping rule as notes: active team's projects, or own team-less projects
-// in the personal workspace. The filter itself lives in auth-helpers so the MCP
-// server, which authenticates with an API key instead of a session, applies the
-// identical rule.
+// in the personal workspace — plus, there, the projects of the customers the
+// user logs in for. The base filter lives in auth-helpers so the MCP server,
+// which authenticates with an API key instead of a session, applies it too.
 export async function getProjectAccessFilter(event: H3Event) {
   const userId = event.context.session.user.id
-  return projectAccessFilter(userId, await getUserActiveTeamId(event))
+  const teamId = await getUserActiveTeamId(event)
+  return sessionProjectFilter(userId, teamId, teamId ? [] : await customerIdsOf(userId))
+}
+
+/** The caller's relation to a project they reached through the filter above. */
+export async function audienceOf(event: H3Event, project: { userId: string, teamId: string | null }): Promise<Audience> {
+  return audienceFor(event.context.session.user.id, await getUserActiveTeamId(event), project)
 }
 
 // Resolves a project the caller may access, 404 otherwise. Column and task
@@ -27,7 +34,17 @@ export async function requireProject(event: H3Event, projectId: string) {
     .where(and(eq(projects.id, projectId), filter))
 
   if (!project) throw createError({ statusCode: 404, message: 'Project not found' })
-  return project
+  return { ...project, audience: await audienceOf(event, project) }
+}
+
+/**
+ * Stops a customer contact at a change only staff may make. Contacts can read
+ * what is shared with them, add tasks and comment; the board itself is staff's.
+ */
+export function requireStaff(project: { audience: Audience }) {
+  if (project.audience !== 'staff') {
+    throw createError({ statusCode: 403, message: 'Only the project team can do this' })
+  }
 }
 
 // Trashed rows are invisible everywhere by default; only the trash view and the
@@ -63,6 +80,11 @@ export async function requireTask(event: H3Event, taskId: string, options: Trash
 
   if (!task) throw createError({ statusCode: 404, message: 'Task not found' })
   const project = await requireProject(event, task.projectId)
+  // An internal task does not exist as far as a customer is concerned: the same
+  // 404 as a foreign id, so its existence is not given away either.
+  if (project.audience === 'customer' && task.visibility !== 'customer') {
+    throw createError({ statusCode: 404, message: 'Task not found' })
+  }
   return { task, project }
 }
 

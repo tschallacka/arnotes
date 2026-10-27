@@ -8,7 +8,8 @@
 // note or board it was given a link to, and gets it only while that link is
 // live.
 import { auth } from '../lib/auth'
-import { subscribePeer, unsubscribePeer, workspaceTopic, publicNoteTopic, publicProjectTopic } from '../utils/realtime'
+import { customerTopic, subscribePeer, unsubscribePeer, workspaceTopic, publicNoteTopic, publicProjectTopic } from '../utils/realtime'
+import { customerIdsOf } from '../utils/auth-helpers'
 import { findPublicNote, findPublicProject } from '../utils/publicAccess'
 import { db } from '../db'
 import { member } from '../db/schema'
@@ -81,7 +82,10 @@ export default defineWebSocketHandler({
 
     const teamId = await activeTeamId(session.user.id, session.session?.activeOrganizationId)
 
-    subscribePeer(peer, workspaceTopic(session.user.id, teamId), clientId)
+    // The personal workspace is also where a customer contact reads their
+    // customers' boards, so it follows those customers too.
+    const customerTopics = teamId ? [] : (await customerIdsOf(session.user.id)).map(customerTopic)
+    subscribePeer(peer, [workspaceTopic(session.user.id, teamId), ...customerTopics], clientId)
     peer.send(JSON.stringify({ type: 'ready' }))
   },
 

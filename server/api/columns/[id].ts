@@ -1,7 +1,7 @@
 import { db } from '../../db'
 import { projects, projectColumns, projectTasks } from '../../db/schema'
 import { and, eq, isNull } from 'drizzle-orm'
-import { requireColumn, projectColumnsOrdered, positionBetween, renumberColumnTasks, uiDeletion } from '../../utils/projects'
+import { requireColumn, requireStaff, projectColumnsOrdered, positionBetween, renumberColumnTasks, uiDeletion } from '../../utils/projects'
 import { isAccentColor } from '#shared/utils/colors'
 import { publishFromEvent } from '../../utils/realtime'
 
@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
   // Widened for the delete below, which has to be able to find a column that is
   // already in the trash in order to remove it for good.
   const { column, project } = await requireColumn(event, id, { includeDeleted: true })
+  requireStaff(project)
 
   if (event.method === 'PUT') {
     // A trashed column is read-only: restore it first, then rename or move it.

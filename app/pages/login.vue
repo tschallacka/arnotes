@@ -11,7 +11,16 @@ const isGoogleEnabled = computed(() => String(config.public.googleEnabled) === '
 const isOidcEnabled = computed(() => String(config.public.oidcEnabled) === 'true')
 const isEmailCodeEnabled = computed(() => String(config.public.emailCodeEnabled) === 'true')
 const isPasskeysEnabled = computed(() => String(config.public.passkeysEnabled) === 'true')
-const isSignUpAllowed = computed(() => String(config.public.allowSignUp) === 'true')
+// An invitation link sends people here with its token. It opens sign-up even where
+// sign-up is closed (the server checks the invitation cookie, not this flag), and
+// every way of signing in returns to the invitation to accept it.
+const route = useRoute()
+const inviteToken = computed(() => {
+  const value = route.query.invite
+  return typeof value === 'string' && /^[\w-]+$/.test(value) ? value : ''
+})
+const returnTo = computed(() => inviteToken.value ? `/invite/${inviteToken.value}` : '/note')
+const isSignUpAllowed = computed(() => String(config.public.allowSignUp) === 'true' || Boolean(inviteToken.value))
 const oidcName = computed(() => String(config.public.oidcName || 'Single sign-on'))
 const hasAlternatives = computed(() => isDiscordEnabled.value || isGitHubEnabled.value || isGoogleEnabled.value
   || isOidcEnabled.value || isEmailCodeEnabled.value || isPasskeysEnabled.value)
@@ -32,7 +41,7 @@ const isPending = ref(false)
 // A full page load, not a client-side one: the notes store and user settings
 // are seeded by plugins that only run once, and they need the fresh session.
 async function finish() {
-  await navigateTo('/note', { external: true })
+  await navigateTo(returnTo.value, { external: true })
 }
 
 async function run(action: () => Promise<{ error: { message?: string } | null }>, onSuccess: () => unknown = finish) {
@@ -143,6 +152,9 @@ onMounted(async () => {
           </template>
           <template v-else-if="step === 'email-code'">
             {{ codeSent ? `We sent a code to ${email}.` : 'We will email you a one-time code.' }}
+          </template>
+          <template v-else-if="inviteToken">
+            Sign in or create an account to accept your invitation.
           </template>
           <template v-else>
             Your notes stay on this server.
@@ -399,7 +411,7 @@ onMounted(async () => {
               color="neutral"
               variant="outline"
               class="gap-2"
-              @click="signInWithOidc"
+              @click="signInWithOidc(returnTo)"
             >
               <UIcon
                 name="i-lucide-key-round"
@@ -414,7 +426,7 @@ onMounted(async () => {
               color="neutral"
               variant="outline"
               class="gap-2"
-              @click="signInWithDiscord"
+              @click="signInWithDiscord(returnTo)"
             >
               <UIcon
                 name="i-simple-icons-discord"
@@ -429,7 +441,7 @@ onMounted(async () => {
               color="neutral"
               variant="outline"
               class="gap-2"
-              @click="signInWithGitHub"
+              @click="signInWithGitHub(returnTo)"
             >
               <UIcon
                 name="i-simple-icons-github"
@@ -444,7 +456,7 @@ onMounted(async () => {
               color="neutral"
               variant="outline"
               class="gap-2"
-              @click="signInWithGoogle"
+              @click="signInWithGoogle(returnTo)"
             >
               <UIcon
                 name="i-simple-icons-google"

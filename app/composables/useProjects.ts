@@ -3,9 +3,20 @@ import type MiniSearch from 'minisearch'
 import { realtimeHeaders } from '~/composables/useRealtime'
 import { matchesTagRequirements, type TagRequirement } from '#shared/utils/tags'
 
+// Mirrors VISIBILITIES in server/db/schema.ts: `internal` is for the
+// organisation only, `customer` is also shown to the project's customer.
+export type Visibility = 'internal' | 'customer'
+
+// How the signed-in user sees a project: as its organisation (`staff`), or as
+// a contact of its customer, who sees customer-visible work and edits little.
+export type Audience = 'staff' | 'customer'
+
 export interface Project {
   id: string
   name: string
+  customerId?: string | null
+  customerName?: string | null
+  audience?: Audience
   // Colours pinned to this board's task labels, keyed by the label. A label
   // with no entry falls back to the colour derived from its own text.
   labelColors?: Record<string, string>
@@ -44,6 +55,7 @@ export interface ProjectTask {
   title: string
   description: string
   tags: string[]
+  visibility?: Visibility
   position: number
   createdAt: number
   updatedAt: number
@@ -56,6 +68,7 @@ export interface TaskComment {
   taskId: string
   userId: string
   body: string
+  visibility?: Visibility
   createdAt: number
   editedAt?: number | null
   userName: string | null
@@ -280,6 +293,9 @@ export function useProjects() {
   const activeProject = computed(() =>
     _projects.value.find(p => p.id === _activeProjectId.value) ?? null
   )
+  // The server enforces this; the board only uses it to stop offering what a
+  // customer contact would be refused.
+  const isCustomerView = computed(() => activeProject.value?.audience === 'customer')
 
   async function load() {
     const [projects, tasks] = await Promise.all([
@@ -316,13 +332,24 @@ export function useProjects() {
     await load()
   }
 
-  async function createProject(name: string) {
+  async function createProject(name: string, customerId: string | null = null) {
     const project = await $fetch<Project>('/api/projects', {
       method: 'POST', headers: realtimeHeaders(),
-      body: { name }
+      body: { name, customerId }
     })
     upsertProject(project)
     return project
+  }
+
+  // Files the board under a customer, or back to internal with null. The row
+  // that comes back has no name for the customer, so the caller supplies it.
+  async function setProjectCustomer(id: string, customerId: string | null, customerName: string | null) {
+    const updated = await $fetch<Project>(`/api/projects/${id}`, {
+      method: 'PUT', headers: realtimeHeaders(),
+      body: { customerId }
+    })
+    upsertProject({ ...updated, customerName: customerId ? customerName : null })
+    return updated
   }
 
   async function renameProject(id: string, name: string) {
@@ -573,7 +600,7 @@ export function useProjects() {
     return task
   }
 
-  async function updateTask(id: string, patch: { title?: string, description?: string, tags?: string[] }) {
+  async function updateTask(id: string, patch: { title?: string, description?: string, tags?: string[], visibility?: Visibility }) {
     const task = await $fetch<ProjectTask>(`/api/tasks/${id}`, { method: 'PUT', headers: realtimeHeaders(), body: patch })
     upsertBoardTask(task)
     upsertSearchRow(task)
@@ -639,10 +666,12 @@ export function useProjects() {
     return comments
   }
 
-  async function addComment(taskId: string, body: string) {
+  // Staff updates start internal unless asked otherwise; the server ignores the
+  // choice for a customer contact, whose updates are always customer-visible.
+  async function addComment(taskId: string, body: string, visibility?: Visibility) {
     const comment = await $fetch<TaskComment>(`/api/tasks/${taskId}/comments`, {
       method: 'POST', headers: realtimeHeaders(),
-      body: { body }
+      body: { body, visibility }
     })
     _comments.value = [..._comments.value, comment]
     _commentCounts.value = { ..._commentCounts.value, [taskId]: (_commentCounts.value[taskId] ?? 0) + 1 }
@@ -655,6 +684,15 @@ export function useProjects() {
       body: { body }
     })
     _comments.value = _comments.value.map(c => c.id === commentId ? { ...c, ...updated } : c)
+    return updated
+  }
+
+  async function setCommentVisibility(taskId: string, commentId: string, visibility: Visibility) {
+    const updated = await $fetch<Pick<TaskComment, 'id' | 'visibility'>>(`/api/tasks/${taskId}/comments/${commentId}`, {
+      method: 'PUT', headers: realtimeHeaders(),
+      body: { visibility }
+    })
+    _comments.value = _comments.value.map(c => c.id === commentId ? { ...c, visibility: updated.visibility ?? visibility } : c)
     return updated
   }
 
@@ -724,6 +762,7 @@ export function useProjects() {
     projects: _projects,
     allTasks: _allTasks,
     activeProject,
+    isCustomerView,
     activeProjectId: _activeProjectId,
     board: _board,
     boardColumns,
@@ -735,6 +774,7 @@ export function useProjects() {
     syncProjects,
     reloadBoardQuiet,
     createProject,
+    setProjectCustomer,
     renameProject,
     updateProjectSharing,
     deleteProject,
@@ -768,6 +808,7 @@ export function useProjects() {
     loadComments,
     addComment,
     editComment,
+    setCommentVisibility,
     deleteComment,
     clearComments,
     searchBoards

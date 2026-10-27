@@ -11,10 +11,12 @@ appMode.value = 'projects'
 
 const {
   activeProject,
+  isCustomerView,
   loadBoard,
   board,
   boardColumns,
   renameProject,
+  setProjectCustomer,
   updateProjectSharing,
   deleteProject,
   activeTags,
@@ -68,7 +70,7 @@ const nameDraft = ref('')
 const nameEl = ref<HTMLInputElement | null>(null)
 
 async function startRename() {
-  if (!activeProject.value) return
+  if (!activeProject.value || isCustomerView.value) return
   nameDraft.value = activeProject.value.name
   renaming.value = true
   await nextTick()
@@ -138,6 +140,43 @@ const taskCountTitle = computed(() => {
   return `${tasks.filter(task => !terminal.has(task.columnId)).length} open of ${tasks.length}`
 })
 
+// ─── Customer ──────────────────────────────────────────────
+
+// Only an organisation's boards can belong to a customer; a personal board has
+// nobody to share with.
+const { activeTeamId } = useTeams()
+const { customers, ensureLoaded: ensureCustomers } = useCustomers()
+const toast = useToast()
+
+const canPickCustomer = computed(() => Boolean(activeTeamId.value) && !isCustomerView.value)
+
+watch(canPickCustomer, (can) => {
+  if (can) ensureCustomers().catch(() => {})
+}, { immediate: true })
+
+async function pickCustomer(customerId: string | null, customerName: string | null) {
+  const project = activeProject.value
+  if (!project || (project.customerId ?? null) === customerId) return
+  try {
+    await setProjectCustomer(project.id, customerId, customerName)
+  } catch {
+    toast.add({ title: 'Could not change the customer', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+const customerMenu = computed(() => [
+  [{
+    label: 'Internal project',
+    icon: 'i-lucide-lock',
+    onSelect: () => pickCustomer(null, null)
+  }],
+  customers.value.map(c => ({
+    label: c.name,
+    icon: c.id === activeProject.value?.customerId ? 'i-lucide-check' : 'i-lucide-building-2',
+    onSelect: () => pickCustomer(c.id, c.name)
+  }))
+])
+
 // ─── Sharing ───────────────────────────────────────────────
 
 const publicLink = computed(() =>
@@ -180,12 +219,39 @@ useSeoMeta({
       >
       <button
         v-else
-        class="min-w-0 truncate rounded px-1 py-0.5 text-base font-semibold text-default transition-colors hover:bg-elevated"
+        class="min-w-0 truncate rounded px-1 py-0.5 text-base font-semibold text-default transition-colors"
+        :class="isCustomerView ? 'cursor-default' : 'hover:bg-elevated'"
         :title="activeProject?.name"
         @click="startRename"
       >
         {{ activeProject?.name ?? 'Board' }}
       </button>
+
+      <UDropdownMenu
+        v-if="canPickCustomer"
+        :items="customerMenu"
+        :content="{ align: 'start' }"
+      >
+        <UButton
+          size="xs"
+          color="neutral"
+          variant="soft"
+          :icon="activeProject?.customerId ? 'i-lucide-building-2' : 'i-lucide-lock'"
+          class="shrink-0"
+        >
+          {{ activeProject?.customerName ?? 'Internal' }}
+        </UButton>
+      </UDropdownMenu>
+      <UBadge
+        v-else-if="activeProject?.customerName"
+        size="sm"
+        color="neutral"
+        variant="soft"
+        icon="i-lucide-building-2"
+        class="shrink-0"
+      >
+        {{ activeProject.customerName }}
+      </UBadge>
 
       <span
         class="shrink-0 text-xs text-dimmed"
@@ -235,7 +301,7 @@ useSeoMeta({
                 />
                 <KanbanLabelChip
                   :tag="tag"
-                  editable
+                  :editable="!isCustomerView"
                   chip-class="min-w-0 flex-1 text-xs"
                 />
                 <span class="shrink-0 text-xs tabular-nums text-dimmed">{{ count }}</span>
@@ -245,7 +311,7 @@ useSeoMeta({
         </UPopover>
 
         <SharePopover
-          v-if="activeProject"
+          v-if="activeProject && !isCustomerView"
           subject="board"
           :is-public="activeProject.isPublic"
           :public-until="activeProject.publicUntil"
@@ -253,7 +319,10 @@ useSeoMeta({
           :save="saveSharing"
         />
 
-        <UDropdownMenu :items="projectMenu">
+        <UDropdownMenu
+          v-if="!isCustomerView"
+          :items="projectMenu"
+        >
           <UButton
             icon="i-lucide-ellipsis"
             size="xs"
@@ -303,7 +372,7 @@ useSeoMeta({
       >
         <KanbanLabelChip
           :tag="tag"
-          editable
+          :editable="!isCustomerView"
           chip-class="cursor-pointer text-xs"
         />
         <UIcon

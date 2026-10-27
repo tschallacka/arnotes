@@ -21,6 +21,7 @@ Arnotes is a fast, self-hosted note-taking app organized around inline tags, wit
 - Email/password accounts with optional Discord, GitHub and Google OAuth, or your own OpenID Connect server
 - Passkeys, authenticator-app two-factor, and optional sign-in codes by email
 - Bring-your-own-key OpenRouter integration; AI is entirely optional
+- Customers inside your organisation, each with projects and logins of their own: a customer sees the tasks and updates you mark as visible to them, and never the internal ones
 - Kanban boards for projects: columns, drag-and-drop tasks, labels, rich-text descriptions, and a log of updates per task, written in a narrow inline Markdown (bold, italic, code, strike, highlight, links)
 - Live updates, so a change made by an AI agent, a teammate, or another tab shows up without a reload — on shared links too
 - Built-in MCP server so Claude Code and other AI agents can read and write your notes and run your boards, using API keys you scope yourself
@@ -172,6 +173,20 @@ docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
 The `NUXT_PUBLIC_*_ENABLED` switches are used by both the server and client, so the same configuration works with native development and Docker Compose.
 
 OpenRouter credentials are entered per user under Settings and are not server environment variables.
+
+### Organisations And Customers
+
+The first account to sign up runs the instance. It gets an organisation of its own and is the only account that may hand out the right to create organisations, under **Accounts on this instance** in the workspace menu. An instance that already had users is upgraded the same way on startup: its oldest account becomes the admin.
+
+Inside an organisation, **Customers** in the workspace menu adds customers, files projects under them (the customer button next to a board's name), and creates invitation links. A link works once, for 14 days, and is shown only when it is created. Whoever opens it signs in or creates an account, even where `ALLOW_SIGN_UP=false`, and becomes a contact of that customer: the customer's boards appear in their personal workspace.
+
+Contacts see what is marked as visible to the customer and nothing else:
+
+- A task is visible to the customer unless it is switched to **Internal** in its panel. Internal tasks are also left off a board's public link.
+- An update starts out internal. The lock next to the update box shares the next one, and **Show to customer** in an update's menu shares one already posted.
+- Contacts can file tasks and post updates, which are always visible to the team and the customer. They cannot move, edit, or delete tasks, change columns, or share the board.
+
+Agents over MCP and the in-app assistant work with staff access only. They never reach a customer's board through a contact's key.
 
 ### Persistent Data
 

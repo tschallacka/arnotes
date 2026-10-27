@@ -9,11 +9,15 @@ import { passkey } from '@better-auth/passkey'
 import { db } from '../db'
 import * as schema from '../db/schema'
 import { mailEnabled, sendMail } from './mailer'
+import { eq } from 'drizzle-orm'
+import { ensureOwnerOrganization, invitationTokenFrom, isFirstUser, isLiveInvitation } from '../utils/ownerOrganization'
 
 const baseURL = process.env.BETTER_AUTH_URL || 'http://localhost:3000'
 
-// One switch for every way an account can be created. A provider that ignored it
-// would turn a private instance back into an open one through its sign-in button.
+// One switch for every way an account can be created, enforced in the user
+// creation hook below rather than per method: a sign-in method that ignored it
+// would turn a private instance back into an open one, and a per-method switch
+// could not let an invited customer contact through.
 const signUpDisabled = process.env.ALLOW_SIGN_UP === 'false'
 
 const discordEnabled = process.env.NUXT_PUBLIC_DISCORD_ENABLED === 'true'
@@ -56,6 +60,15 @@ export const auth = betterAuth({
   }),
   plugins: [
     organization({
+      // Owning an organisation is handed out by the instance admin; everyone else
+      // joins one with a code or works in a customer's portal.
+      async allowUserToCreateOrganization(candidate) {
+        const [row] = await db
+          .select({ isInstanceAdmin: schema.user.isInstanceAdmin, canCreateOrganizations: schema.user.canCreateOrganizations })
+          .from(schema.user)
+          .where(eq(schema.user.id, candidate.id))
+        return Boolean(row?.isInstanceAdmin || row?.canCreateOrganizations)
+      },
       // Better Auth only returns columns it knows about, so `joinCode` has to be
       // declared here or it is stripped from every organization response.
       // `input: false` keeps it server-issued — clients can never set their own.
@@ -82,7 +95,6 @@ export const auth = betterAuth({
     ...(emailCodeEnabled
       ? [emailOTP({
           expiresIn: SIGN_IN_CODE_MINUTES * 60,
-          disableSignUp: signUpDisabled,
           async sendVerificationOTP({ email, otp, type }) {
             if (type !== 'sign-in') return
             // Not awaited: the response would otherwise take longer for an address
@@ -100,8 +112,7 @@ export const auth = betterAuth({
             clientId: process.env.OIDC_CLIENT_ID!,
             clientSecret: process.env.OIDC_CLIENT_SECRET!,
             scopes: ['openid', 'email', 'profile'],
-            pkce: true,
-            disableSignUp: signUpDisabled
+            pkce: true
           }]
         })]
       : [])
@@ -120,29 +131,53 @@ export const auth = betterAuth({
       }
     })
   },
+  user: {
+    // Read by the client to decide what to offer; never settable from it.
+    additionalFields: {
+      isInstanceAdmin: { type: 'boolean', required: false, defaultValue: false, input: false },
+      canCreateOrganizations: { type: 'boolean', required: false, defaultValue: false, input: false }
+    }
+  },
   databaseHooks: {
     user: {
       create: {
-        // Signing up with an email code asks for no name, and an empty one
-        // leaves the avatar and team member lists with nothing to show.
-        async before(user) {
-          if (user.name?.trim()) return
-          return { data: { ...user, name: user.email.split('@')[0] } }
+        // Every way of creating an account ends here: password, email code,
+        // OAuth, OIDC. The first account always gets in and runs the instance;
+        // after that a closed instance admits only someone holding a live
+        // customer invitation, carried in a cookie through the sign-up or the
+        // OAuth round trip.
+        async before(user, ctx) {
+          const first = await isFirstUser()
+          if (!first && signUpDisabled && !(await isLiveInvitation(invitationTokenFrom(ctx?.headers ?? ctx?.request?.headers)))) {
+            throw new APIError('FORBIDDEN', { message: 'Sign-up is closed here. Ask for an invitation link.' })
+          }
+          return {
+            data: {
+              ...user,
+              // Signing up with an email code asks for no name, and an empty one
+              // leaves the avatar and team member lists with nothing to show.
+              name: user.name?.trim() || user.email.split('@')[0],
+              ...(first && { isInstanceAdmin: true, canCreateOrganizations: true })
+            }
+          }
+        },
+        async after(user) {
+          if ((user as { isInstanceAdmin?: boolean }).isInstanceAdmin) {
+            await ensureOwnerOrganization(user.id, user.name)
+          }
         }
       }
     }
   },
   emailAndPassword: {
-    enabled: true,
-    disableSignUp: signUpDisabled
+    enabled: true
   },
   socialProviders: {
     ...(discordEnabled
       ? {
           discord: {
             clientId: process.env.DISCORD_CLIENT_ID!,
-            clientSecret: process.env.DISCORD_CLIENT_SECRET!,
-            disableSignUp: signUpDisabled
+            clientSecret: process.env.DISCORD_CLIENT_SECRET!
           }
         }
       : {}),
@@ -150,8 +185,7 @@ export const auth = betterAuth({
       ? {
           github: {
             clientId: process.env.GITHUB_CLIENT_ID!,
-            clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-            disableSignUp: signUpDisabled
+            clientSecret: process.env.GITHUB_CLIENT_SECRET!
           }
         }
       : {}),
@@ -159,8 +193,7 @@ export const auth = betterAuth({
       ? {
           google: {
             clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-            disableSignUp: signUpDisabled
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!
           }
         }
       : {})
