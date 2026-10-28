@@ -18,17 +18,15 @@ import { getUserActiveTeamId } from './auth-helpers'
  * What changed, at the coarsest useful grain — the client refetches the affected
  * slice rather than trying to apply a patch it was not part of.
  *
- * - `notes`: the note list changed (created, edited, trashed, restored)
  * - `projects`: the set of boards changed (created, renamed, deleted)
  * - `board`: one board's columns, tasks or updates changed
  *
- * The optional ids name the single note or board behind the change. Workspace
- * clients ignore them and refetch the slice; they exist so the change can also
- * reach the anonymous readers of that one shared link.
+ * The optional id names the single board behind the change. Workspace clients
+ * ignore it and refetch the slice; it exists so the change can also reach the
+ * anonymous readers of that one shared link.
  */
 export type RealtimeEvent
-  = | { type: 'notes', noteId?: string }
-    | { type: 'projects', projectId?: string }
+  = | { type: 'projects', projectId?: string }
     | { type: 'board', projectId: string }
 
 /**
@@ -51,21 +49,15 @@ export function customerTopic(customerId: string): string {
 /**
  * Topics for the public read-only pages. A shared link is its own audience:
  * the readers are anonymous and belong to no workspace, so they subscribe to
- * the one note or board they were given rather than to a workspace feed.
+ * the one board they were given rather than to a workspace feed.
  */
-export function publicNoteTopic(noteId: string): string {
-  return `public:note:${noteId}`
-}
-
 export function publicProjectTopic(projectId: string): string {
   return `public:project:${projectId}`
 }
 
-/** The public topic a workspace event also belongs on, if it names one thing. */
+/** The public topic a workspace event also belongs on, if it names one. */
 function publicTopicFor(event: RealtimeEvent): string | null {
-  if (event.type === 'board') return publicProjectTopic(event.projectId)
-  if (event.type === 'projects') return event.projectId ? publicProjectTopic(event.projectId) : null
-  return event.noteId ? publicNoteTopic(event.noteId) : null
+  return event.projectId ? publicProjectTopic(event.projectId) : null
 }
 
 interface Subscription {
@@ -139,8 +131,8 @@ async function projectTopics(projectId: string): Promise<string[]> {
 /**
  * Sends an event to every client in a workspace except the one that caused it,
  * to the readers of the board it names, and to anyone reading the shared link
- * of the note or board it names — a public page is a viewer of the same data,
- * just without a session. Readers of a shared link are never the origin of a
+ * of the board it names — a public page is a viewer of the same data, just
+ * without a session. Readers of a shared link are never the origin of a
  * change, and a board that is not shared simply has no subscribers.
  *
  * The event only says that something changed. What each reader may see is
@@ -151,9 +143,8 @@ export async function publish(topic: string, event: RealtimeEvent, originClientI
   if (!subscriptions.size) return
   const topics = new Set([topic])
 
-  const projectId = event.type === 'notes' ? undefined : event.projectId
-  if (projectId) {
-    for (const extra of await projectTopics(projectId).catch(() => [])) topics.add(extra)
+  if (event.projectId) {
+    for (const extra of await projectTopics(event.projectId).catch(() => [])) topics.add(extra)
   }
 
   const publicTopic = publicTopicFor(event)

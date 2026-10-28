@@ -1,13 +1,12 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'app' })
 
-const { appMode, sidebarOpen } = useSidebar()
-appMode.value = 'projects'
+const { sidebarOpen } = useSidebar()
 
 const { ready, projects, createProject } = useProjects()
 const route = useRoute()
 
-// Like /note → most recent note: land on the most recently updated board.
+// Land on the most recently updated board.
 // ?new=1 (the sidebar's new-project button) keeps you here to name one.
 const wantsNew = computed(() => route.query.new === '1')
 

@@ -4,11 +4,11 @@
 // connect, and every request is authorised on its own.
 import { authenticateApiKey, hasScope } from '../../utils/api-keys'
 import type { ApiKeyContext } from '../../utils/api-keys'
-import { toolsForScopes } from '../../utils/mcpTools'
+import { toolsForScopes } from '../../utils/mcpBoardTools'
 import { McpToolError } from '../../utils/mcpToolKit'
 import { API_KEY_SCOPES } from '../../db/schema'
 import type { ApiKeyScope } from '../../db/schema'
-import { closeTopic, publicNoteTopic, publish, workspaceTopic } from '../../utils/realtime'
+import { publish, workspaceTopic } from '../../utils/realtime'
 import type { RealtimeEvent } from '../../utils/realtime'
 
 const SERVER_NAME = 'taskmanager'
@@ -19,15 +19,15 @@ const SERVER_VERSION = '0.1.0'
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05']
 const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]!
 
-const INSTRUCTIONS = `Taskmanager is a tag-based note-taking app with kanban boards beside the notes.
+const INSTRUCTIONS = `Taskmanager is a kanban board app for projects and tasks.
 
-A note has a title, a Markdown body and tags, and tags are written inline in the body as #hashtags. A board has columns (kanban stages such as Backlog, To do, Verify, Done) holding tasks; a task has a title, a Markdown description, labels, and a running log of short updates.
+A board has columns (kanban stages such as Backlog, To do, Verify, Done) holding tasks; a task has a title, a Markdown description, labels, and a running log of short updates. Tasks can have their own subtask checklist in the app, but there is no tool here to manage subtasks yet.
 
-Search or list before answering questions about the user's notes or boards, and ground answers in what the tools return. Read the board with get_board before creating or moving tasks so board, column and task names match. When editing, send the complete replacement body or description rather than a fragment — read the note or task first if you are only changing part of it.
+Search or list before answering questions about the user's boards, and ground answers in what the tools return. Read the board with get_board before creating or moving tasks so board, column and task names match. When editing, send the complete replacement description rather than a fragment — read the task first if you are only changing part of it.
 
-The list-shaped results are deliberately short: search_notes returns a snippet, and get_board and search_tasks return each task as its card — title, labels and the opening of the description, ending in an ellipsis when there is more. Read one thing in full with get_note or get_task rather than asking a board for every description at once.
+The list-shaped results are deliberately short: get_board and search_tasks return each task as its card — title, labels and the opening of the description, ending in an ellipsis when there is more. Read one thing in full with get_task rather than asking a board for every description at once.
 
-Nothing here deletes permanently. delete_note moves a note to the trash and restore_note brings it back; delete_column and delete_task do the same on a board, undone with restore_column and restore_task, and the user can see and restore both under "Show trashed" on the board itself. A board's trash is emptied after 7 days.
+Nothing here deletes permanently. delete_column and delete_task move things to the trash, undone with restore_column and restore_task, and the user can see and restore both under "Show trashed" on the board itself. A board's trash is emptied after 7 days.
 
 There is no tool for deleting a board — that stays with the user, in the app. Deleting is still the wrong move most of the time: a finished task belongs in a "Done" column via move_task, not in the trash. Say what you are about to delete and why before you do it, and when a delete turns out to be wrong, restore it rather than recreating it — a restored task keeps its updates and its place on the board.`
 
@@ -66,24 +66,14 @@ const ALL_SCOPES: ApiKeyScope[] = [...API_KEY_SCOPES]
 
 /**
  * Tells the workspace's open browsers that an agent changed something, so a
- * board or note list on screen refreshes instead of going stale. Board results
- * carry the board they touched; anything else falls back to the coarse signal.
+ * board on screen refreshes instead of going stale. Board results carry the
+ * board they touched; anything else falls back to the coarse signal.
  */
 function announceWrite(tool: { scope: ApiKeyScope }, value: unknown, context: ApiKeyContext) {
-  const topic = workspaceTopic(context.userId, context.teamId)
-  const record = asRecord(value)
-
-  if (tool.scope === 'notes:write') {
-    // The tools answer with the note they touched, either as the result itself
-    // or nested under `note`; naming it also reaches its public readers.
-    const noteId = record.id ?? asRecord(record.note).id
-    void publish(topic, { type: 'notes', ...(typeof noteId === 'string' && { noteId }) })
-    // A trashed note stops being readable over its public link.
-    if (record.trashed === true && typeof noteId === 'string') closeTopic(publicNoteTopic(noteId))
-    return
-  }
   if (tool.scope !== 'boards:write') return
 
+  const topic = workspaceTopic(context.userId, context.teamId)
+  const record = asRecord(value)
   const board = asRecord(value).board
   const projectId = typeof board === 'object' && board !== null
     ? (board as Record<string, unknown>).id

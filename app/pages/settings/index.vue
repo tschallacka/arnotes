@@ -6,10 +6,8 @@ definePageMeta({ layout: 'app' })
 
 useSeoMeta({ title: 'Settings' })
 
-const router = useRouter()
 const { session, signOut } = useAuth()
 const colorMode = useColorMode()
-const { notes, activeNotes, allTags, activeNoteId } = useNotes()
 const { primaryColor, neutralColor, PRIMARY_COLORS, NEUTRAL_COLORS, setPrimaryColor, setNeutralColor, openrouterApiKeyMasked, openrouterModel, POPULAR_OPENROUTER_MODELS, setOpenRouterApiKey, setOpenRouterModel } = useUserSettings()
 const { sidebarOpen } = useSidebar()
 
@@ -123,13 +121,6 @@ async function changeModel(model: string) {
 
 const openrouterDocsUrl = 'https://openrouter.ai/keys'
 
-// Clear so clicking any note (including the already-active one) triggers navigation
-activeNoteId.value = null
-
-watch(activeNoteId, (id) => {
-  if (id) router.push('/note/' + id)
-})
-
 const isDark = computed(() => colorMode.value === 'dark')
 
 function toggleColorMode() {
@@ -148,22 +139,8 @@ const memberSince = computed(() => {
   return format(new Date(date), 'MMMM yyyy')
 })
 
-const totalNotes = computed(() => activeNotes.value.length)
-const totalTags = computed(() => allTags.value.length)
 const totalPrompts = computed(() => aiHistory.value?.totals.prompts ?? 0)
 const totalAiCost = computed(() => aiHistory.value?.totals.cost ?? 0)
-
-const totalContentBytes = computed(() => {
-  const enc = new TextEncoder()
-  return notes.value.reduce((sum, n) => sum + enc.encode(n.content).byteLength, 0)
-})
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
 
 function swatchStyle(color: string, selected: boolean) {
   return {
@@ -208,23 +185,7 @@ function swatchStyle(color: string, selected: boolean) {
             <div class="px-5 py-3 border-b border-default bg-elevated/40">
               <span class="text-xs font-semibold text-muted uppercase tracking-wider">Your stats</span>
             </div>
-            <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 divide-x divide-default">
-              <div class="p-5 flex items-center gap-3">
-                <div class="size-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <UIcon
-                    name="i-lucide-file-text"
-                    class="size-4 text-primary"
-                  />
-                </div>
-                <div>
-                  <p class="text-xl font-bold tabular-nums leading-none">
-                    {{ totalNotes }}
-                  </p>
-                  <p class="text-xs text-muted mt-1">
-                    {{ totalNotes === 1 ? 'Note' : 'Notes' }}
-                  </p>
-                </div>
-              </div>
+            <div class="grid grid-cols-2 divide-x divide-default">
               <div class="p-5 flex items-center gap-3">
                 <div class="size-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <UIcon
@@ -254,38 +215,6 @@ function swatchStyle(color: string, selected: boolean) {
                   </p>
                   <p class="text-xs text-muted mt-1">
                     AI spent
-                  </p>
-                </div>
-              </div>
-              <div class="p-5 flex items-center gap-3">
-                <div class="size-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <UIcon
-                    name="i-lucide-tag"
-                    class="size-4 text-primary"
-                  />
-                </div>
-                <div>
-                  <p class="text-xl font-bold tabular-nums leading-none">
-                    {{ totalTags }}
-                  </p>
-                  <p class="text-xs text-muted mt-1">
-                    {{ totalTags === 1 ? 'Tag' : 'Tags' }}
-                  </p>
-                </div>
-              </div>
-              <div class="p-5 flex items-center gap-3">
-                <div class="size-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <UIcon
-                    name="i-lucide-hard-drive"
-                    class="size-4 text-primary"
-                  />
-                </div>
-                <div>
-                  <p class="text-xl font-bold tabular-nums leading-none">
-                    {{ formatBytes(totalContentBytes) }}
-                  </p>
-                  <p class="text-xs text-muted mt-1">
-                    Content size
                   </p>
                 </div>
               </div>
@@ -614,8 +543,8 @@ function swatchStyle(color: string, selected: boolean) {
       color="neutral"
       variant="ghost"
       size="md"
-      aria-label="Back to notes"
-      @click="navigateTo('/note')"
+      aria-label="Back to boards"
+      @click="navigateTo('/projects')"
     />
   </div>
 </template>

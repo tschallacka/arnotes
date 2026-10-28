@@ -28,7 +28,8 @@ const {
   deleteTeam
 } = useTeams()
 const { session } = useAuth()
-const { refreshNotes } = useNotes()
+const { refresh: refreshProjects } = useProjects()
+const { refresh: refreshCustomers } = useCustomers()
 const toast = useToast()
 
 const isOpen = computed({
@@ -102,7 +103,8 @@ async function handleJoinTeam() {
     await joinTeamWithCode(joinCodeInput.value.trim())
     joinCodeInput.value = ''
     isJoinOpen.value = false
-    await refreshNotes()
+    await refreshProjects()
+    await refreshCustomers()
   } catch (e: unknown) {
     joinError.value = (e as Error)?.message || 'Failed to join team'
   } finally {
@@ -118,8 +120,9 @@ async function handleCreateTeam() {
     await createTeam(newTeamName.value.trim())
     newTeamName.value = ''
     isCreateOpen.value = false
-    // Creating a team switches the active workspace, so the note list is stale.
-    await refreshNotes()
+    // Creating a team switches the active workspace, so the board list is stale.
+    await refreshProjects()
+    await refreshCustomers()
   } catch (e: unknown) {
     createError.value = (e as Error)?.message || 'Failed to create team'
   } finally {
@@ -210,7 +213,7 @@ function confirmRotateCode() {
 function confirmRemoveMember(memberId: string, memberName: string) {
   askConfirm({
     title: 'Remove member?',
-    description: `Remove ${memberName} from ${activeTeam.value?.name}? They will lose access to the team's notes.`,
+    description: `Remove ${memberName} from ${activeTeam.value?.name}? They will lose access to the team's boards.`,
     confirmLabel: 'Remove',
     color: 'error',
     action: () => removeMember(memberId)
@@ -234,15 +237,16 @@ function confirmLeaveTeam() {
   askConfirm({
     title: isLastMember ? 'Delete this team?' : 'Leave this team?',
     description: isLastMember
-      ? `You're the only member of ${activeTeam.value?.name}. Leaving will permanently delete the team and all of its notes.`
+      ? `You're the only member of ${activeTeam.value?.name}. Leaving will permanently delete the team and all of its boards.`
       : `Are you sure you want to leave ${activeTeam.value?.name}?`,
     confirmLabel: isLastMember ? 'Delete Team' : 'Leave Team',
     color: 'error',
     action: async () => {
       await leaveTeam(organizationId)
       isOpen.value = false
-      // Dropped back to the personal workspace — reload its notes.
-      await refreshNotes()
+      // Dropped back to the personal workspace — reload its boards.
+      await refreshProjects()
+      await refreshCustomers()
     }
   })
 }
@@ -252,13 +256,14 @@ function confirmDeleteTeam() {
   const organizationId = activeTeamId.value
   askConfirm({
     title: 'Delete this team?',
-    description: `Are you sure you want to delete ${activeTeam.value?.name}? This will permanently delete the team and all of its notes. This action cannot be undone.`,
+    description: `Are you sure you want to delete ${activeTeam.value?.name}? This will permanently delete the team and all of its boards. This action cannot be undone.`,
     confirmLabel: 'Delete Team',
     color: 'error',
     action: async () => {
       await deleteTeam(organizationId)
       isOpen.value = false
-      await refreshNotes()
+      await refreshProjects()
+      await refreshCustomers()
     }
   })
 }
@@ -270,7 +275,7 @@ function confirmDeleteTeam() {
     <UModal
       v-model:open="isCreateOpen"
       title="Create New Team"
-      description="Collaborate on notes with your teammates."
+      description="Collaborate on boards with your teammates."
     >
       <template #body>
         <form

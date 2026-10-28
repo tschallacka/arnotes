@@ -36,8 +36,6 @@ const EXPIRY_OPTIONS = [
 
 // One toggle per permission, in the order they are advertised to a client.
 const PERMISSIONS = [
-  { scope: 'notes:read', label: 'Read notes', description: 'Search, list and read' },
-  { scope: 'notes:write', label: 'Write notes', description: 'Create, edit and trash' },
   { scope: 'boards:read', label: 'Read boards', description: 'Boards, tasks and updates' },
   { scope: 'boards:write', label: 'Write boards', description: 'Create, edit, move and delete' }
 ] as const
@@ -110,7 +108,7 @@ async function revokeKey(key: ApiKeySummary) {
   }
 }
 
-// Badges read "notes: write", short enough to sit beside a key name.
+// Badges read "boards: write", short enough to sit beside a key name.
 function scopeLabel(scope: string): string {
   const [feature, permission] = scope.split(':')
   return `${feature} ${permission}`
@@ -163,7 +161,7 @@ function expiryLabel(key: ApiKeySummary): string {
             Connect an AI agent
           </p>
           <p class="text-xs text-muted mt-0.5">
-            An API key lets Claude Code, Claude Desktop or any other MCP client read and write these notes.
+            An API key lets Claude Code, Claude Desktop or any other MCP client read and write these boards.
             Keys are issued for one workspace — these belong to
             <span class="font-medium text-default">{{ workspaceName }}</span>.
           </p>

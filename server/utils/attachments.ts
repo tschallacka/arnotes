@@ -2,8 +2,8 @@ import { join } from 'path'
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import type { MultiPartData } from 'h3'
 
-// Image uploads for notes and tasks share one rulebook: the same formats, the
-// same size cap, the same per-owner limit. Only where the files live differs.
+// Image uploads for tasks follow one rulebook: the same formats, the same
+// size cap, the same per-owner limit.
 export const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'])
 
 const EXT_FROM_MIME: Record<string, string> = {
@@ -29,12 +29,7 @@ export const ATTACHMENT_MIME: Record<string, string> = {
   '.svg': 'image/svg+xml'
 }
 
-/** Notes keep their files directly under data/attachments/<noteId>. */
-export function noteAttachmentDir(noteId: string) {
-  return join(process.cwd(), 'data', 'attachments', noteId)
-}
-
-/** Task files sit in their own tree so a task id can never shadow a note id. */
+/** Task files sit under data/task-attachments/<taskId>. */
 export function taskAttachmentDir(taskId: string) {
   return join(process.cwd(), 'data', 'task-attachments', taskId)
 }

@@ -30,19 +30,19 @@ export function useAuth() {
 
   // Each provider comes back to `callbackURL`, which is an invitation page when
   // the sign-in started from one.
-  async function signInWithDiscord(callbackURL = '/note') {
+  async function signInWithDiscord(callbackURL = '/projects') {
     await authClient.signIn.social({ provider: 'discord', callbackURL })
   }
 
-  async function signInWithGitHub(callbackURL = '/note') {
+  async function signInWithGitHub(callbackURL = '/projects') {
     await authClient.signIn.social({ provider: 'github', callbackURL })
   }
 
-  async function signInWithGoogle(callbackURL = '/note') {
+  async function signInWithGoogle(callbackURL = '/projects') {
     await authClient.signIn.social({ provider: 'google', callbackURL })
   }
 
-  async function signInWithOidc(callbackURL = '/note') {
+  async function signInWithOidc(callbackURL = '/projects') {
     await authClient.signIn.oauth2({ providerId: 'oidc', callbackURL })
   }
 

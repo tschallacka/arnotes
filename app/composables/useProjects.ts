@@ -116,7 +116,7 @@ interface BoardPayload {
   trashedCount: number
 }
 
-// Module-level singleton state, same pattern as useNotes.
+// Module-level singleton state.
 const _projects = ref<Project[]>([])
 const _allTasks = ref<TaskSearchRow[]>([])
 const _activeProjectId = ref<string | null>(null)
@@ -182,7 +182,7 @@ export function boardPerson(id: string | null | undefined): ProjectPerson | null
   return id ? _peopleById.value.get(id) ?? null : null
 }
 
-// Search over projects and tasks; owned by the init plugin like the notes index.
+// Search over projects and tasks; owned by the init plugin.
 type ProjectSearchDoc = { id: string, type: 'project' | 'task', name: string, title: string, descriptionText: string }
 let _search: MiniSearch<ProjectSearchDoc> | null = null
 // What the index was last built from. A realtime burst re-reads the whole task
@@ -293,7 +293,20 @@ function upsertBoardTask(task: ProjectTask) {
 }
 
 function removeBoardTask(id: string) {
-  _subtasks.value = _subtasks.value.filter(t => t.id !== id && t.parentTaskId !== id)
+  // The server cascades the delete through every depth of subtask beneath a
+  // removed card, so the local mirror has to drop the whole chain too.
+  const removedIds = new Set([id])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const t of _subtasks.value) {
+      if (t.parentTaskId && removedIds.has(t.parentTaskId) && !removedIds.has(t.id)) {
+        removedIds.add(t.id)
+        grew = true
+      }
+    }
+  }
+  _subtasks.value = _subtasks.value.filter(t => !removedIds.has(t.id))
   if (!_board.value) return
   _board.value = { ..._board.value, tasks: _board.value.tasks.filter(t => t.id !== id) }
 }
@@ -376,8 +389,8 @@ export function useProjects() {
     _ready.value = true
   }
 
-  // Same idea as the notes sync: refresh the board list and the flat task index
-  // without dropping the open board or its label filter.
+  // Refreshes the board list and the flat task index without dropping the
+  // open board or its label filter.
   async function syncProjects() {
     const [projects, tasks] = await Promise.all([
       $fetch<Project[]>('/api/projects'),
@@ -431,8 +444,7 @@ export function useProjects() {
     return updated
   }
 
-  // Sharing a board hands out a read-only link, optionally until a date, the
-  // same deal a shared note gets.
+  // Sharing a board hands out a read-only link, optionally until a date.
   async function updateProjectSharing(id: string, isPublic: boolean, publicUntil: number | null) {
     const updated = await $fetch<Project>(`/api/projects/${id}`, {
       method: 'PUT', headers: realtimeHeaders(),
@@ -729,18 +741,46 @@ export function useProjects() {
     return task
   }
 
-  // First call trashes the card, second removes it for good — the same two
-  // stages a note has. The card leaves the search index either way: a trashed
-  // task is not something a global search should be able to open.
+  // Same idea as moveTask, but for a subtask: it never changes column, and it
+  // can be re-nested under a different parent (indent/outdent) instead of only
+  // reordering among its current siblings.
+  async function moveSubtask(id: string, parentTaskId: string, beforeId: string | null, afterId: string | null) {
+    const task = await $fetch<ProjectTask>(`/api/tasks/${id}`, {
+      method: 'PUT', headers: realtimeHeaders(),
+      body: { parentTaskId, beforeId, afterId }
+    })
+    upsertBoardTask(task)
+    upsertSearchRow(task)
+    touchProject(task.projectId)
+    await reloadBoardQuiet(task.projectId)
+    return task
+  }
+
+  // First call trashes the card, second removes it for good. The card leaves
+  // the search index either way: a trashed task is not something a global
+  // search should be able to open.
   async function deleteTask(id: string) {
     const res = await $fetch<{ ok: boolean, permanent: boolean }>(`/api/tasks/${id}`, {
       method: 'DELETE', headers: realtimeHeaders()
     })
     removeSearchRow(id)
 
-    // A subtask goes for good and never counted towards the trash.
+    // A subtask goes for good and never counted towards the trash. The server
+    // cascades the delete to its own subtasks too, so the local mirror has to
+    // drop the whole chain beneath it, not just the row itself.
     if (_subtasks.value.some(t => t.id === id)) {
-      _subtasks.value = _subtasks.value.filter(t => t.id !== id)
+      const removedIds = new Set([id])
+      let grew = true
+      while (grew) {
+        grew = false
+        for (const t of _subtasks.value) {
+          if (t.parentTaskId && removedIds.has(t.parentTaskId) && !removedIds.has(t.id)) {
+            removedIds.add(t.id)
+            grew = true
+          }
+        }
+      }
+      _subtasks.value = _subtasks.value.filter(t => !removedIds.has(t.id))
       return res
     }
 
@@ -825,9 +865,9 @@ export function useProjects() {
 
   // Merged hits for the global search modal: tasks first (title boost), then
   // projects. Resolved back to rows by prefixed id (`task:` / `project:`).
-  // What a `#tag` in the search box can match on a board. Boards do not carry
-  // note tags, so a task answers with its labels plus the words of its board's
-  // name — which is how `#sanitairkamer` finds the Sanitairkamer board's work.
+  // What a `#tag` in the search box can match on a board: a task answers with
+  // its labels plus the words of its board's name — which is how
+  // `#sanitairkamer` finds the Sanitairkamer board's work.
   function taskTagPool(row: TaskSearchRow): string[] {
     return [...row.tags, ...row.projectName.toLowerCase().split(/[^\w]+/).filter(Boolean)]
   }
@@ -921,6 +961,7 @@ export function useProjects() {
     createSubtask,
     updateTask,
     moveTask,
+    moveSubtask,
     deleteTask,
     restoreTask,
     loadComments,

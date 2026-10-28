@@ -2,8 +2,8 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 // Live updates for the public pages. Same socket as the app's, asked for
 // differently: a reader has no session and no workspace, so it names the one
-// note or board it was given a link to and the server decides whether that link
-// is live. Nothing is sent back — the page refetches when told something moved.
+// board it was given a link to and the server decides whether that link is
+// live. Nothing is sent back — the page refetches when told something moved.
 //
 // The app's own feed lives in useRealtime: it is a singleton wired to the
 // stores, which a signed-out reader has none of.
@@ -13,7 +13,7 @@ const HEARTBEAT = 30_000
 /** The share is off, expired or gone — reconnecting would only be refused again. */
 const NOT_SHARED = 4404
 
-export type PublicTarget = { kind: 'note' | 'project', id: string } | null
+export type PublicTarget = { kind: 'project', id: string } | null
 
 export function usePublicLive(target: () => PublicTarget, onChange: () => void) {
   const connected = ref(false)

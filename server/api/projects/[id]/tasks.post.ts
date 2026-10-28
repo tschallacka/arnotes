@@ -30,9 +30,6 @@ export default defineEventHandler(async (event) => {
   if (body.parentTaskId) {
     const { task: parent, project } = await requireTask(event, body.parentTaskId)
     requireStaff(project)
-    if (parent.parentTaskId) {
-      throw createError({ statusCode: 400, message: 'Subtasks go one level deep' })
-    }
     if (project.id !== getRouterParam(event, 'id')) {
       throw createError({ statusCode: 400, message: 'That task belongs to another project' })
     }

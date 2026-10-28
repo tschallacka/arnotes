@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-34d399.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-34d399.svg)](https://github.com/AVMG20/arnotes/releases)
 
-Taskmanager is a self-hosted project manager for an agency and its customers: organisations, customers with their own logins, kanban boards with assignees, due dates and subtasks, and notes organised by inline tags. It started as a fork of [Arnotes](https://github.com/AVMG20/arnotes-old), and its install names (`services.arnotes`, the `arnotes` database and Docker volumes) are kept from there so upgrades stay in place. It includes a rich-text editor, full-text search, attachments, expiring public links to notes and boards, an installable PWA, optional AI writing tools through OpenRouter, and an MCP server for connecting AI agents.
+Taskmanager is a self-hosted project manager for an agency and its customers: organisations, customers with their own logins, and kanban boards with assignees, due dates and nested subtasks. It started as a fork of [Arnotes](https://github.com/AVMG20/arnotes-old), and its install names (`services.arnotes`, the `arnotes` database and Docker volumes) are kept from there so upgrades stay in place. It includes a rich-text editor, full-text search, attachments, expiring public links to boards, an installable PWA, optional AI writing tools through OpenRouter, and an MCP server for connecting AI agents.
 
 ![Taskmanager editor](public/screenshot.png)
 
@@ -12,19 +12,18 @@ Taskmanager is a self-hosted project manager for an agency and its customers: or
 
 ## Features
 
-- Organize notes by typing `#tags` directly in the editor
 - Rich editing with headings, tables, tasks, code blocks, highlighting, and images
-- Search across titles, content, and tags
+- Search across boards, tasks, and labels
 - Markdown import and export
 - Soft deletion and trash recovery
-- Private notes and boards, each with an optional expiring public link
+- Private boards, each with an optional expiring public link
 - Email/password accounts with optional Discord, GitHub and Google OAuth, or your own OpenID Connect server
 - Passkeys, authenticator-app two-factor, and optional sign-in codes by email
 - Bring-your-own-key OpenRouter integration; AI is entirely optional
 - Customers inside your organisation, each with projects and logins of their own: a customer sees the tasks and updates you mark as visible to them, and never the internal ones
 - Kanban boards for projects: columns, drag-and-drop tasks, labels, rich-text descriptions, and a log of updates per task, written in a narrow inline Markdown (bold, italic, code, strike, highlight, links)
 - Live updates, so a change made by an AI agent, a teammate, or another tab shows up without a reload — on shared links too
-- Built-in MCP server so Claude Code and other AI agents can read and write your notes and run your boards, using API keys you scope yourself
+- Built-in MCP server so Claude Code and other AI agents can read and manage your boards, using API keys you scope yourself
 - Installable Progressive Web App
 - Docker- and Nix-based self-hosting with persistent PostgreSQL and attachment storage
 
@@ -38,7 +37,7 @@ cd arnotes
 docker compose up -d --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000), create an account, and start writing. The first account receives a welcome note automatically.
+Open [http://localhost:3000](http://localhost:3000) and create an account.
 
 That is the entire local self-hosting setup. Compose builds Taskmanager, starts PostgreSQL, waits for it to become healthy, pushes the Drizzle schema, and generates a persistent authentication secret.
 
@@ -66,7 +65,7 @@ cp .env.example .env
 At minimum, change these values:
 
 ```dotenv
-BETTER_AUTH_URL=https://notes.example.com
+BETTER_AUTH_URL=https://taskmanager.example.com
 BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
 ALLOW_SIGN_UP=true
 ```
@@ -92,7 +91,7 @@ Taskmanager listens on port `3000`. Put it behind a TLS-terminating reverse prox
 Example Caddy configuration:
 
 ```caddyfile
-notes.example.com {
+taskmanager.example.com {
   reverse_proxy localhost:3000
 }
 ```
@@ -128,24 +127,24 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `SMTP_PORT` | `587`, or `465` when secure | SMTP port |
 | `SMTP_SECURE` | `false` | `true` for TLS from the first byte; otherwise STARTTLS is used when offered |
 | `SMTP_USER` / `SMTP_PASSWORD` | empty | SMTP credentials, if the server needs them |
-| `SMTP_FROM` | empty | Sender address, e.g. `Taskmanager <notes@example.com>` |
+| `SMTP_FROM` | empty | Sender address, e.g. `Taskmanager <taskmanager@example.com>` |
 
 To enable Discord, set all three Discord variables and register this redirect URL in the Discord developer portal:
 
 ```text
-https://notes.example.com/api/auth/callback/discord
+https://taskmanager.example.com/api/auth/callback/discord
 ```
 
 To enable GitHub, set all three GitHub variables and register this authorization callback URL in a GitHub OAuth app:
 
 ```text
-https://notes.example.com/api/auth/callback/github
+https://taskmanager.example.com/api/auth/callback/github
 ```
 
 To enable Google, set all three Google variables and create a *Web application* OAuth client under Google Auth Platform → Clients in the Google Cloud Console, with this authorized redirect URI:
 
 ```text
-https://notes.example.com/api/auth/callback/google
+https://taskmanager.example.com/api/auth/callback/google
 ```
 
 Google accepts plain `http` redirect URIs only for `localhost`, so `http://localhost:3000/api/auth/callback/google` works for local development. Other hosts, including `*.localhost` names and LAN IP addresses, need HTTPS on a public domain. While the consent screen is in *Testing*, only the Google accounts listed as test users can sign in.
@@ -153,7 +152,7 @@ Google accepts plain `http` redirect URIs only for `localhost`, so `http://local
 To use your own OpenID Connect server (Authentik, Authelia, Keycloak, Pocket ID, Kanidm), create a confidential client there with this redirect URI, set the three `OIDC_*` variables, and name the button with `NUXT_PUBLIC_OIDC_NAME`:
 
 ```text
-https://notes.example.com/api/auth/oauth2/callback/oidc
+https://taskmanager.example.com/api/auth/oauth2/callback/oidc
 ```
 
 ### Passkeys, Two-Factor And Email Codes
@@ -166,7 +165,7 @@ https://notes.example.com/api/auth/oauth2/callback/oidc
 
 ```bash
 docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
-# .env: SMTP_HOST=localhost, SMTP_PORT=1025, SMTP_FROM=Taskmanager <notes@localhost>
+# .env: SMTP_HOST=localhost, SMTP_PORT=1025, SMTP_FROM=Taskmanager <taskmanager@localhost>
 # read the mail at http://localhost:8025
 ```
 
@@ -192,7 +191,7 @@ Agents over MCP and the in-app assistant work with staff access only. They never
 
 Compose creates two named volumes:
 
-- `arnotes_postgres_data` stores accounts, notes, settings, and metadata.
+- `arnotes_postgres_data` stores accounts, boards, settings, and metadata.
 - `arnotes_app_data` stores uploaded attachments and the auto-generated auth secret.
 
 `docker compose down` keeps both volumes. `docker compose down -v` permanently deletes them.
@@ -241,7 +240,7 @@ The module manages everything itself. By default it creates a dedicated `arnotes
         {
           services.arnotes = {
             enable = true;
-            betterAuth.url = "https://notes.example.com";
+            betterAuth.url = "https://taskmanager.example.com";
             openFirewall = true;
             # allowSignUp defaults to true; set to false once the owner account exists
           };
@@ -308,18 +307,16 @@ bun run dev         # run the dev server with hot reload
 
 ## Connect An AI Agent
 
-Taskmanager ships an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Claude Desktop, and any other MCP client can search, read, and write your notes, and run your kanban boards.
+Taskmanager ships an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Claude Desktop, and any other MCP client can search, read, and manage your kanban boards.
 
 Open **Settings → API keys & MCP** to create a key, then follow the in-app setup guide at `/mcp`, which shows the endpoint for your install along with ready-made configuration snippets.
 
 ### API Keys
 
-Keys are created per workspace: a key made inside a team reaches that team's notes and boards, and a key made in your personal workspace reaches only your own. Each key carries the permissions you give it, and notes and boards are separate — an agent can be given the boards without the notes.
+Keys are created per workspace: a key made inside a team reaches that team's boards, and a key made in your personal workspace reaches only your own. Each key carries the permissions you give it — read, write, or both.
 
 | Permission | Tools it unlocks |
 | --- | --- |
-| Read notes | `list_notes`, `search_notes`, `get_note`, `list_tags` |
-| Write notes | `create_note`, `update_note`, `delete_note`, `restore_note` |
 | Read boards | `list_boards`, `get_board`, `get_task`, `search_tasks`, `list_task_labels` |
 | Write boards | `create_board`, `update_board`, `create_column`, `update_column`, `delete_column`, `restore_column`, `create_task`, `update_task`, `move_task`, `delete_task`, `restore_task` |
 
@@ -333,14 +330,14 @@ The list-shaped tools answer with what the screen shows, not with everything beh
 
 A large board can be narrowed further: `columns` restricts the read to the stages you care about, `detail: "titles"` drops the excerpts, and `limit` caps the tasks per column, reporting the rest as `omitted`.
 
-Anything addressable in the app is also addressable by its link. Paste the URL of a note, a board, or a board with a task open (`/projects/<id>?task=<id>`) into `get_note`, `get_board` or `get_task` and it resolves to that one resource — there is no title to describe and no id to retype.
+Anything addressable in the app is also addressable by its link. Paste the URL of a board, or a board with a task open (`/projects/<id>?task=<id>`), into `get_board` or `get_task` and it resolves to that one resource — there is no title to describe and no id to retype.
 
 ### Connecting
 
-The endpoint is `https://notes.example.com/api/mcp`, spoken over streamable HTTP and authenticated with an `Authorization: Bearer` header.
+The endpoint is `https://taskmanager.example.com/api/mcp`, spoken over streamable HTTP and authenticated with an `Authorization: Bearer` header.
 
 ```bash
-claude mcp add --transport http taskmanager https://notes.example.com/api/mcp \
+claude mcp add --transport http taskmanager https://taskmanager.example.com/api/mcp \
   --header "Authorization: Bearer arn_your_key_here"
 ```
 
@@ -351,20 +348,20 @@ For clients configured with JSON:
   "mcpServers": {
     "taskmanager": {
       "type": "http",
-      "url": "https://notes.example.com/api/mcp",
+      "url": "https://taskmanager.example.com/api/mcp",
       "headers": { "Authorization": "Bearer arn_your_key_here" }
     }
   }
 }
 ```
 
-Anything an agent writes shows up in an open browser immediately — the app listens on a WebSocket at `/_ws` and refetches what changed, so a board or note list never sits there stale. Public pages listen on the same socket for the one note or board they were given a link to, so a shared board follows the work as it moves. Behind a reverse proxy, that path needs the usual `Upgrade`/`Connection` headers forwarded; a single app instance holds the connections in memory, so running several would need a shared bus between them.
+Anything an agent writes shows up in an open browser immediately — the app listens on a WebSocket at `/_ws` and refetches what changed, so a board list never sits there stale. Public pages listen on the same socket for the one board they were given a link to, so a shared board follows the work as it moves. Behind a reverse proxy, that path needs the usual `Upgrade`/`Connection` headers forwarded; a single app instance holds the connections in memory, so running several would need a shared bus between them.
 
-Agents work with notes and task descriptions as Markdown; Taskmanager converts to and from the editor's format on both sides.
+Agents work with task descriptions as Markdown; Taskmanager converts to and from the editor's format on both sides.
 
-Nothing reachable over MCP deletes anything permanently. `delete_note` moves a note to the trash and `restore_note` brings it back; `delete_column` and `delete_task` do the same on a board, undone by `restore_column` and `restore_task` or by the user under **Show trashed** on the board. A board's trash is emptied automatically after 7 days. There is no `delete_board` tool at all — deleting a board takes every column, task and update with it, so it stays in the app behind a confirmation, where an agent cannot reach it.
+Nothing reachable over MCP deletes anything permanently. `delete_column` and `delete_task` put the column or card in the board's trash, undone by `restore_column` and `restore_task` or by the user under **Show trashed** on the board. A board's trash is emptied automatically after 7 days. There is no `delete_board` tool at all — deleting a board takes every column, task and update with it, so it stays in the app behind a confirmation, where an agent cannot reach it.
 
-The setup guide also offers a copyable skill file that teaches an agent the conventions of the app, such as matching your existing tags and reading a note before editing it.
+The setup guide also offers a copyable skill file that teaches an agent the conventions of the app, such as matching your existing labels and reading a task before editing it.
 
 ## Development
 
@@ -413,7 +410,7 @@ Database structure is defined only in `server/db/schema.ts`. After changing it, 
 - Drizzle ORM and PostgreSQL store application data.
 - Uploaded files are stored under `data/attachments` and mounted as a Docker volume.
 - OpenRouter powers optional user-configured AI actions.
-- An MCP server at `/api/mcp` exposes notes and boards to AI agents, authenticated with scoped API keys.
+- An MCP server at `/api/mcp` exposes boards to AI agents, authenticated with scoped API keys.
 
 ## Marketing Site
 

@@ -1,7 +1,7 @@
 import { addDays, addMonths, addWeeks, addYears, format, isValid, nextDay, previousDay, startOfDay, type Day } from 'date-fns'
 
 // What can be typed after `@`: a small natural-language date parser. It reads
-// English and Dutch, because notes here are written in both.
+// English and Dutch, because content here is written in both.
 //
 //   today · tomorrow · yesterday · now · vandaag · morgen · overmorgen
 //   fri · next friday · last monday · volgende week · next month

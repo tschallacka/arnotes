@@ -108,7 +108,7 @@ export const member = pgTable(
     role: text('role').notNull(),
     createdAt: timestamp('created_at').notNull()
   },
-  // Every authenticated note request resolves membership for the active team.
+  // Every authenticated request resolves membership for the active team.
   table => [index('member_org_user_idx').on(table.organizationId, table.userId)]
 )
 
@@ -186,30 +186,6 @@ export type Visibility = typeof VISIBILITIES[number]
 
 // ─── App tables ───────────────────────────────────────────────────────────────
 
-export const notes = pgTable(
-  'notes',
-  {
-    id: text('id').primaryKey(),
-    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-    // NULL means the note lives in the author's personal workspace. Existing notes
-    // predating teams keep NULL, so they stay exactly where they were.
-    teamId: text('team_id').references(() => organization.id, { onDelete: 'cascade' }),
-    title: text('title').notNull().default('Untitled'),
-    content: text('content').notNull().default(''),
-    tags: json('tags').$type<string[]>().notNull().default([]),
-    attachments: json('attachments').$type<string[]>().notNull().default([]),
-    isPublic: boolean('is_public').notNull().default(false),
-    publicUntil: bigint('public_until', { mode: 'number' }),
-    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
-    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
-    deletedAt: bigint('deleted_at', { mode: 'number' })
-  },
-  table => [index('notes_team_id_idx').on(table.teamId)]
-)
-
-export type Note = typeof notes.$inferSelect
-export type NewNote = typeof notes.$inferInsert
-
 // ─── Projects (kanban) ────────────────────────────────────────────────────────
 
 // Where a delete came from. Recorded on the row so the board's trash can tell
@@ -226,7 +202,7 @@ export const projects = pgTable(
   {
     id: text('id').primaryKey(),
     userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-    // NULL = personal workspace, same scoping rule as notes.
+    // NULL = personal workspace.
     teamId: text('team_id').references(() => organization.id, { onDelete: 'cascade' }),
     // The client this project is for. Only a team project can have one, and the
     // customer must belong to that same organisation.
@@ -236,7 +212,7 @@ export const projects = pgTable(
     // A label with no entry keeps the colour derived from its own text, so a
     // board reads the same as it always did until someone changes one.
     labelColors: json('label_colors').$type<Record<string, string>>().notNull().default({}),
-    // Same share model as notes: a link anyone can open, optionally until a date.
+    // A link anyone can open, optionally until a date.
     isPublic: boolean('is_public').notNull().default(false),
     publicUntil: bigint('public_until', { mode: 'number' }),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
@@ -263,8 +239,8 @@ export const projectColumns = pgTable(
     // from its name, so renaming "To do" to "Done" still turns it green.
     color: text('color'),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
-    // Soft delete, same shape as notes. A trashed column keeps its position so
-    // restoring puts it back between the same two neighbours it sat between.
+    // Soft delete. A trashed column keeps its position so restoring puts it
+    // back between the same two neighbours it sat between.
     deletedAt: bigint('deleted_at', { mode: 'number' }),
     // Who emptied it and through which door. An agent working overnight is the
     // case this exists for: the board can say "deleted by an MCP key" rather
@@ -286,8 +262,8 @@ export const projectTasks = pgTable(
     title: text('title').notNull().default('Untitled'),
     // Rich text (tiptap HTML) — rendered with prose in cards and drawer.
     description: text('description').notNull().default(''),
-    // Kanban labels: unlike note tags they do not group boards, they annotate
-    // tasks (priority, workstream, …) and filter the board view.
+    // Kanban labels: they annotate tasks (priority, workstream, …) and filter
+    // the board view.
     tags: json('tags').$type<string[]>().notNull().default([]),
     // A customer's project is theirs to follow, so its tasks start out visible.
     visibility: text('visibility').$type<Visibility>().notNull().default('customer'),
@@ -409,9 +385,8 @@ export const POPULAR_OPENROUTER_MODELS = [
 // ─── API keys (MCP + programmatic access) ─────────────────────────────────────
 
 // Permissions a key can carry, one pair per feature. Read covers listing,
-// searching and reading; write covers everything that changes data. Notes and
-// boards are separate so a key can be given one without the other.
-export const API_KEY_SCOPES = ['notes:read', 'notes:write', 'boards:read', 'boards:write'] as const
+// searching and reading; write covers everything that changes data.
+export const API_KEY_SCOPES = ['boards:read', 'boards:write'] as const
 export type ApiKeyScope = typeof API_KEY_SCOPES[number]
 
 export const apiKeys = pgTable(

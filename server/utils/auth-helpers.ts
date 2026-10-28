@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import { randomInt } from 'crypto'
 import { db } from '../db'
-import { customerMembers, member, notes, projects, projectTasks, taskComments } from '../db/schema'
+import { customerMembers, member, projects, projectTasks, taskComments } from '../db/schema'
 import { eq, and, inArray, isNull, or } from 'drizzle-orm'
 
 export async function getUserActiveTeamId(event: H3Event): Promise<string | null> {
@@ -51,17 +51,7 @@ export async function isTeamMember(userId: string, organizationId: string): Prom
 }
 
 /**
- * Scopes a note query to one workspace: every note of the given team, or only the
- * user's own team-less notes when there is no team.
- */
-export function noteAccessFilter(userId: string, teamId: string | null) {
-  return teamId
-    ? eq(notes.teamId, teamId)
-    : and(eq(notes.userId, userId), isNull(notes.teamId))
-}
-
-/**
- * The same rule for project boards: every board of the given team, or only the
+ * Scopes a project query to one workspace: every board of the given team, or only the
  * user's own team-less boards when there is no team.
  */
 export function projectAccessFilter(userId: string, teamId: string | null) {
@@ -119,18 +109,9 @@ export function commentVisibilityFilter(audience: Audience) {
   return audience === 'customer' ? eq(taskComments.visibility, 'customer') : undefined
 }
 
-/**
- * Scopes a note query to the caller's current workspace: every note of the active
- * team, or only the caller's own team-less notes when in the personal workspace.
- */
-export async function getNoteAccessFilter(event: H3Event) {
-  const userId = event.context.session.user.id
-  return noteAccessFilter(userId, await getUserActiveTeamId(event))
-}
-
 const JOIN_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no I/L/O/0/1 — avoids visual ambiguity
 
-// A join code grants access to every note in a team, so it must not be guessable.
+// A join code grants access to every board in a team, so it must not be guessable.
 export function generateJoinCode(length = 16): string {
   let code = ''
   for (let i = 0; i < length; i++) {

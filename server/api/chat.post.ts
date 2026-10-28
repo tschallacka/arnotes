@@ -14,11 +14,11 @@ import { DEFAULT_OPENROUTER_MODEL } from '../utils/ai'
 //   { type: 'tool_calls', calls }        — model wants tools executed
 //   { type: 'done' }                     — stream complete
 //   { type: 'error', message }           — failure
-// Tool execution happens on the client, which owns the notes store.
+// Tool execution happens on the client, which owns the projects store.
 
 /**
- * A tool call whose arguments are a whole note body takes a long time to
- * generate, and the model emits no assistant text while it does. An idle
+ * A tool call whose arguments are a whole task description takes a long time
+ * to generate, and the model emits no assistant text while it does. An idle
  * response stream is closed by proxies in front of the app (the browser then
  * reports ERR_QUIC_PROTOCOL_ERROR / ERR_HTTP2_PROTOCOL_ERROR with nothing in
  * the server log), so a byte goes out at least this often.
@@ -238,8 +238,8 @@ export default defineEventHandler(async (event) => {
                   }
                 })
               }
-              // Progress keeps the connection busy while a long note body is
-              // written, and lets the client show what is being prepared.
+              // Progress keeps the connection busy while a long task description
+              // is written, and lets the client show what is being prepared.
               // Throttled: arguments arrive token by token.
               if (Date.now() - lastProgressAt >= 500) {
                 lastProgressAt = Date.now()

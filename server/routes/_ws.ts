@@ -5,12 +5,11 @@
 // knows when to refetch instead of polling for it.
 //
 // A public page connects here too. It has no session, so it asks for the one
-// note or board it was given a link to, and gets it only while that link is
-// live.
+// board it was given a link to, and gets it only while that link is live.
 import { auth } from '../lib/auth'
-import { customerTopic, subscribePeer, unsubscribePeer, workspaceTopic, publicNoteTopic, publicProjectTopic } from '../utils/realtime'
+import { customerTopic, subscribePeer, unsubscribePeer, workspaceTopic, publicProjectTopic } from '../utils/realtime'
 import { customerIdsOf } from '../utils/auth-helpers'
-import { findPublicNote, findPublicProject } from '../utils/publicAccess'
+import { findPublicProject } from '../utils/publicAccess'
 import { db } from '../db'
 import { member } from '../db/schema'
 import { and, eq } from 'drizzle-orm'
@@ -39,10 +38,10 @@ async function activeTeamId(userId: string, sessionTeamId: string | null | undef
 }
 
 /**
- * The topic behind a `?public=note:<id>` / `?public=project:<id>` request, or
- * null when nothing is shared under that id. The share is checked here exactly
- * as the HTTP endpoints check it: a socket must not become a way to watch a
- * board whose link was never handed out.
+ * The topic behind a `?public=project:<id>` request, or null when nothing is
+ * shared under that id. The share is checked here exactly as the HTTP
+ * endpoints check it: a socket must not become a way to watch a board whose
+ * link was never handed out.
  */
 async function publicTopic(request: string): Promise<string | null> {
   const separator = request.indexOf(':')
@@ -50,7 +49,6 @@ async function publicTopic(request: string): Promise<string | null> {
   const kind = request.slice(0, separator)
   const id = request.slice(separator + 1)
   if (!id) return null
-  if (kind === 'note') return await findPublicNote(id) ? publicNoteTopic(id) : null
   if (kind === 'project') return await findPublicProject(id) ? publicProjectTopic(id) : null
   return null
 }

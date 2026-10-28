@@ -50,11 +50,24 @@ export default defineEventHandler(async (event) => {
     : []
 
   // Subtasks share their parent's column but are not cards. They come in a list
-  // of their own, which the cards count from and the task panel lists. One of a
-  // trashed parent stays behind until the parent goes for good, so it is left out.
+  // of their own, which the cards count from and the task panel lists, and they
+  // can nest to any depth (a subtask of a subtask, and so on). A subtask is only
+  // kept while walking up its chain of parents actually reaches a live top-level
+  // task — a trashed top-level task (or a broken link partway up, which means an
+  // ancestor was filtered out of `rows`) hides everything under it, at every
+  // depth, until that ancestor goes back or goes for good.
+  const rowsById = new Map(rows.map(t => [t.id, t]))
   const tasks = rows.filter(t => !t.parentTaskId)
-  const parentIds = new Set(tasks.filter(t => !t.deletedAt).map(t => t.id))
-  const subtasks = rows.filter(t => t.parentTaskId && parentIds.has(t.parentTaskId) && !t.deletedAt)
+  function hasLiveTopLevelAncestor(row: typeof rows[number]): boolean {
+    let current = row
+    while (current.parentTaskId) {
+      const parent = rowsById.get(current.parentTaskId)
+      if (!parent) return false
+      current = parent
+    }
+    return !current.deletedAt
+  }
+  const subtasks = rows.filter(t => t.parentTaskId && hasLiveTopLevelAncestor(t))
 
   const counts = tasks.length
     ? await db

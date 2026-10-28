@@ -7,9 +7,6 @@ import { removeTaskAttachments } from '../utils/attachments'
 // agent at three in the morning, would sit in the database for the life of the
 // install — and "Show trashed" would slowly turn into an archive of everything
 // the board has ever thrown away.
-//
-// Notes are deliberately not touched here: their trash is emptied by hand from
-// the notes list, and that is the behaviour people already rely on.
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000
 
 async function purge() {

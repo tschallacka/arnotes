@@ -2,7 +2,7 @@
 import { columnDotAttrs } from '~/utils/tagColors'
 import { format } from 'date-fns'
 import { relativeTime } from '~/composables/useRelativeTime'
-import type { TaskComment, Visibility } from '~/composables/useProjects'
+import type { TaskComment, Visibility, ProjectTask } from '~/composables/useProjects'
 import { dueDayToMs, isOverdueDay } from '~/utils/dueDate'
 
 interface Task {
@@ -33,7 +33,6 @@ const {
   people,
   personById,
   subtasksOf,
-  createSubtask,
   updateTask,
   moveTask,
   deleteTask,
@@ -131,7 +130,6 @@ const commentDraft = ref('')
 // Staff updates start internal: a note to the team is the common case, and
 // telling the customer is the step taken on purpose.
 const commentVisibility = ref<Visibility>('internal')
-const subtaskDraft = ref('')
 // The update being rewritten in place, if any.
 const editingId = ref<string | null>(null)
 const editDraft = ref('')
@@ -171,7 +169,7 @@ watch(titleDraft, (v) => {
   titleTimer = setTimeout(() => flushTitle(), 600)
 })
 
-// ─── Description (auto-save, same editor as notes) ─────────
+// ─── Description (auto-save) ────────────────────────────────
 
 const editorContent = ref('')
 let descTimer: ReturnType<typeof setTimeout> | null = null
@@ -214,7 +212,6 @@ watch(() => props.task?.id, (id, previousId) => {
 
   commentDraft.value = ''
   commentVisibility.value = 'internal'
-  subtaskDraft.value = ''
   cancelEdit()
   tagDraft.value = ''
   tagHighlight.value = -1
@@ -247,8 +244,7 @@ onBeforeUnmount(() => {
 // ─── Images ────────────────────────────────────────────────
 
 // Pasted or dropped into the description. The file is stored with the task and
-// served from the task's own attachment route, so the notes uploader's per-note
-// bookkeeping is not involved.
+// served from the task's own attachment route.
 async function uploadImage(file: File): Promise<string | null> {
   const id = props.task?.id
   if (!id) return null
@@ -425,51 +421,13 @@ const dueOverdue = computed(() => {
 
 // ─── Subtasks ──────────────────────────────────────────────
 
-const subtasks = computed(() => shownTask.value ? subtasksOf(shownTask.value.id) : [])
-
-async function addSubtask() {
-  const title = subtaskDraft.value.trim()
-  const task = props.task
-  if (!title || !task || !activeProject.value) return
-  subtaskDraft.value = ''
-  try {
-    await createSubtask(activeProject.value.id, task.id, title)
-  } catch {
-    toast.add({ title: 'Could not add the subtask', icon: 'i-lucide-alert-triangle', color: 'error' })
-  }
+// Every subtask under the task, at any nesting depth — the checklist header
+// counts the whole tree, matching the card badge (see KanbanCard.vue).
+function allSubtasks(taskId: string): ProjectTask[] {
+  const direct = subtasksOf(taskId)
+  return direct.flatMap(t => [t, ...allSubtasks(t.id)])
 }
-
-async function toggleSubtask(id: string, completed: boolean) {
-  try {
-    await updateTask(id, { completed })
-  } catch {
-    toast.add({ title: 'Could not update the subtask', icon: 'i-lucide-alert-triangle', color: 'error' })
-  }
-}
-
-async function renameSubtask(id: string, current: string, event: Event) {
-  const input = event.target as HTMLInputElement
-  const title = input.value.trim()
-  if (!title) {
-    input.value = current
-    return
-  }
-  if (title === current) return
-  try {
-    await updateTask(id, { title })
-  } catch {
-    input.value = current
-    toast.add({ title: 'Could not rename the subtask', icon: 'i-lucide-alert-triangle', color: 'error' })
-  }
-}
-
-async function removeSubtask(id: string) {
-  try {
-    await deleteTask(id)
-  } catch {
-    toast.add({ title: 'Could not remove the subtask', icon: 'i-lucide-alert-triangle', color: 'error' })
-  }
-}
+const subtasks = computed(() => shownTask.value ? allSubtasks(shownTask.value.id) : [])
 
 // ─── Visibility ────────────────────────────────────────────
 
@@ -911,7 +869,7 @@ const menuItems = computed(() => [[
             </dd>
           </dl>
 
-          <!-- Subtasks: their own short checklist of tasks, ticked off here. -->
+          <!-- Subtasks: an Asana-style checklist, nestable and drag-reorderable. -->
           <div
             v-if="subtasks.length || !readonly"
             class="shrink-0 border-t border-default px-5 py-2.5"
@@ -923,67 +881,14 @@ const menuItems = computed(() => [[
                 class="tabular-nums text-dimmed"
               >{{ subtasks.filter(s => s.completedAt != null).length }}/{{ subtasks.length }}</span>
             </p>
-            <div
-              v-for="sub in subtasks"
-              :key="sub.id"
-              class="group/sub flex items-center gap-2 py-0.5"
-            >
-              <button
-                type="button"
-                class="shrink-0"
-                :class="sub.completedAt != null ? 'text-success' : 'text-dimmed hover:text-success'"
-                :disabled="readonly"
-                :aria-label="sub.completedAt != null ? 'Mark subtask as not done' : 'Mark subtask as done'"
-                @click="toggleSubtask(sub.id, sub.completedAt == null)"
-              >
-                <UIcon
-                  :name="sub.completedAt != null ? 'i-lucide-circle-check' : 'i-lucide-circle'"
-                  class="size-4"
-                />
-              </button>
-              <input
-                :value="sub.title"
-                :readonly="readonly"
-                class="min-w-0 flex-1 bg-transparent py-0.5 text-sm outline-none"
-                :class="sub.completedAt != null ? 'text-muted line-through decoration-1' : 'text-default'"
-                @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
-                @blur="renameSubtask(sub.id, sub.title, $event)"
-              >
-              <UAvatar
-                v-if="personById(sub.assigneeId)"
-                :src="personById(sub.assigneeId)?.image ?? undefined"
-                :alt="personById(sub.assigneeId)?.name"
-                size="3xs"
-              />
-              <UButton
-                v-if="!readonly"
-                icon="i-lucide-x"
-                size="xs"
-                color="neutral"
-                variant="ghost"
-                aria-label="Remove subtask"
-                class="opacity-0 transition-opacity focus-visible:opacity-100 group-hover/sub:opacity-100"
-                @click="removeSubtask(sub.id)"
-              />
-            </div>
-            <form
-              v-if="!readonly"
-              class="flex items-center gap-2 py-0.5"
-              @submit.prevent="addSubtask"
-            >
-              <UIcon
-                name="i-lucide-plus"
-                class="size-4 shrink-0 text-dimmed"
-              />
-              <input
-                v-model="subtaskDraft"
-                placeholder="Add a subtask…"
-                class="min-w-0 flex-1 bg-transparent py-0.5 text-sm text-default outline-none placeholder:text-dimmed"
-              >
-            </form>
+            <KanbanSubtaskList
+              v-if="shownTask"
+              :parent-task-id="shownTask.id"
+              :readonly="readonly"
+            />
           </div>
 
-          <!-- Description: the notes editor, bounded so it keeps its own scroll -->
+          <!-- Description: the rich-text editor, bounded so it keeps its own scroll -->
           <div class="flex min-h-0 flex-1 flex-col border-t border-default">
             <div
               v-if="readonly"

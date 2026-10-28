@@ -31,7 +31,7 @@ const ColorHighlight = Highlight.extend({
     return {
       color: {
         default: null,
-        // A plain `<mark>` (older notes, pasted content) is the default yellow.
+        // A plain `<mark>` (pasted content) is the default yellow.
         parseHTML: (element) => {
           const color = element.getAttribute('data-color')
           return color && HIGHLIGHT_IDS.has(color) && color !== 'yellow' ? color : null
@@ -44,7 +44,7 @@ const ColorHighlight = Highlight.extend({
 
 // The schema every rich text surface shares, on top of the starter kit that
 // `UEditor` brings: the editor itself and the read-only renderer must agree on
-// it, or a note would render differently from how it was written.
+// it, or a task description would render differently from how it was written.
 export function createContentExtensions(options: { editable: boolean }): AnyExtension[] {
   return [
     CodeBlockLowlight.configure({ lowlight: createEditorLowlight() }).extend({

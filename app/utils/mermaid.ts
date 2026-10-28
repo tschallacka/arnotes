@@ -1,4 +1,4 @@
-// Mermaid is a large library and most notes never draw a diagram, so it is
+// Mermaid is a large library and most tasks never draw a diagram, so it is
 // loaded on first use. Rendering runs in strict mode: the diagram text can
 // come from an agent over MCP, and strict mode keeps HTML labels and click
 // handlers out of the SVG it produces.

@@ -4,8 +4,8 @@ import { createContentExtensions } from '~/utils/editor/extensions'
 
 // Editor HTML rendered the way it was written, minus the editing. The public
 // pages use this: the content is parsed into the same schema the editor uses,
-// so what a reader sees matches the note or task exactly and nothing is
-// injected straight into the DOM.
+// so what a reader sees matches the task exactly and nothing is injected
+// straight into the DOM.
 // `flush` drops the editor's own padding and tightens the block spacing, for
 // containers that already provide both.
 const props = defineProps<{

@@ -19,7 +19,7 @@ const inviteToken = computed(() => {
   const value = route.query.invite
   return typeof value === 'string' && /^[\w-]+$/.test(value) ? value : ''
 })
-const returnTo = computed(() => inviteToken.value ? `/invite/${inviteToken.value}` : '/note')
+const returnTo = computed(() => inviteToken.value ? `/invite/${inviteToken.value}` : '/projects')
 const isSignUpAllowed = computed(() => String(config.public.allowSignUp) === 'true' || Boolean(inviteToken.value))
 const oidcName = computed(() => String(config.public.oidcName || 'Single sign-on'))
 const hasAlternatives = computed(() => isDiscordEnabled.value || isGitHubEnabled.value || isGoogleEnabled.value
@@ -38,8 +38,9 @@ const trustDevice = ref(false)
 const error = ref('')
 const isPending = ref(false)
 
-// A full page load, not a client-side one: the notes store and user settings
-// are seeded by plugins that only run once, and they need the fresh session.
+// A full page load, not a client-side one: the projects store and user
+// settings are seeded by plugins that only run once, and they need the fresh
+// session.
 async function finish() {
   await navigateTo(returnTo.value, { external: true })
 }
@@ -157,7 +158,7 @@ onMounted(async () => {
             Sign in or create an account to accept your invitation.
           </template>
           <template v-else>
-            Your projects and notes stay on this server.
+            Your projects and tasks stay on this server.
           </template>
         </p>
       </div>

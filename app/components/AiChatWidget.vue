@@ -69,23 +69,29 @@ function useSuggestion(text: string) {
 // ─── Rendering ───────────────────────────────────────────────
 
 const toolIcon: Record<string, string> = {
-  search_notes: 'i-lucide-search',
-  get_note: 'i-lucide-file-text',
-  create_note: 'i-lucide-notebook-pen',
-  update_note: 'i-lucide-pencil-line',
-  delete_note: 'i-lucide-trash-2'
+  list_boards: 'i-lucide-kanban',
+  get_board: 'i-lucide-square-kanban',
+  create_board: 'i-lucide-kanban',
+  search_tasks: 'i-lucide-search',
+  create_task: 'i-lucide-square-plus',
+  update_task: 'i-lucide-pencil-line',
+  move_task: 'i-lucide-move',
+  delete_task: 'i-lucide-trash-2'
 }
 
 const toolVerb: Record<string, string> = {
-  search_notes: 'Searching notes',
-  get_note: 'Reading a note',
-  create_note: 'Writing a new note',
-  update_note: 'Rewriting a note',
-  delete_note: 'Moving a note to trash'
+  list_boards: 'Listing boards',
+  get_board: 'Reading a board',
+  create_board: 'Creating a board',
+  search_tasks: 'Searching tasks',
+  create_task: 'Creating a task',
+  update_task: 'Updating a task',
+  move_task: 'Moving a task',
+  delete_task: 'Moving a task to trash'
 }
 
-// While the model writes a long tool argument (a whole note body) no text
-// streams in, so say what it is doing instead of showing a bare spinner.
+// While the model writes a long tool argument (a whole task description) no
+// text streams in, so say what it is doing instead of showing a bare spinner.
 function pendingLabel(m: ChatMessage): string {
   if (m.retrying) return 'Connection lost — reconnecting…'
   const call = m.toolProgress?.[m.toolProgress.length - 1]
@@ -94,9 +100,9 @@ function pendingLabel(m: ChatMessage): string {
 }
 
 const SUGGESTIONS = [
-  { icon: 'i-lucide-search', label: 'Find notes about ' },
-  { icon: 'i-lucide-notebook-pen', label: 'Write a note about ' },
-  { icon: 'i-lucide-list-checks', label: 'Summarize my notes tagged ' }
+  { icon: 'i-lucide-search', label: 'Find tasks about ' },
+  { icon: 'i-lucide-square-plus', label: 'Create a task for ' },
+  { icon: 'i-lucide-kanban', label: 'What boards do I have?' }
 ]
 
 const hasContent = computed(() => messages.value.some(m => m.role === 'user' || m.content))
@@ -129,8 +135,8 @@ watch([open, expanded], ([isOpen]) => {
 })
 
 function openTarget(m: ChatMessage) {
-  if (!m.targetId) return
-  router.push(`/note/${m.targetId}`)
+  if (!m.targetUrl) return
+  router.push(m.targetUrl)
   if (window.innerWidth < 640) open.value = false
 }
 </script>
@@ -238,7 +244,7 @@ function openTarget(m: ChatMessage) {
           Hi, I'm Arnai
         </p>
         <p class="text-xs text-muted">
-          Search your notes, or paste something in and I'll turn it into a note for you.
+          Search your boards, or ask me to create and manage tasks for you.
         </p>
 
         <div
@@ -301,7 +307,7 @@ function openTarget(m: ChatMessage) {
           <button
             class="inline-flex max-w-full items-center gap-1.5 rounded-full border border-default/60 px-2.5 py-1 text-xs transition-colors hover:bg-elevated/60"
             :class="[
-              m.targetId ? 'cursor-pointer hover:text-default' : 'cursor-default',
+              m.targetUrl ? 'cursor-pointer hover:text-default' : 'cursor-default',
               m.error ? 'text-error' : 'text-muted'
             ]"
             @click="openTarget(m)"
@@ -313,7 +319,7 @@ function openTarget(m: ChatMessage) {
             />
             <span class="truncate">{{ m.label ?? m.name }}</span>
             <UIcon
-              v-if="m.targetId"
+              v-if="m.targetUrl"
               name="i-lucide-arrow-up-right"
               class="size-3 shrink-0 opacity-50"
             />
@@ -403,7 +409,7 @@ function openTarget(m: ChatMessage) {
           ref="inputEl"
           v-model="input"
           rows="1"
-          placeholder="Ask about your notes…"
+          placeholder="Ask about your boards…"
           aria-label="Message Arnai"
           class="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent text-sm text-default outline-none placeholder:text-muted"
           @keydown="onInputKeydown"

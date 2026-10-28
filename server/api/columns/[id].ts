@@ -63,8 +63,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 405, message: 'Method not allowed' })
   }
 
-  // DELETE — the same two-stage shape a note has: the first one puts the column
-  // in the board's trash, and deleting it again from there is what removes it.
+  // DELETE — two stages: the first one puts the column in the board's trash,
+  // and deleting it again from there is what removes it.
   if (column.deletedAt) {
     // Permanent. Tasks and their updates cascade off the foreign key.
     await db.delete(projectColumns).where(eq(projectColumns.id, id))

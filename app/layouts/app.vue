@@ -6,10 +6,10 @@ const { sidebarOpen } = useSidebar()
   <UDashboardGroup
     unit="px"
     storage="local"
-    storage-key="notes-sidebar"
+    storage-key="app-sidebar"
   >
     <UDashboardSidebar
-      id="notes-sidebar"
+      id="app-sidebar"
       v-model:open="sidebarOpen"
       resizable
       :min-size="280"
@@ -32,7 +32,7 @@ const { sidebarOpen } = useSidebar()
       <slot />
     </div>
 
-    <NotesSearchModal />
+    <SearchModal />
     <AiChatWidget />
   </UDashboardGroup>
 </template>

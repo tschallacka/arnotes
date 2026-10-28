@@ -3,7 +3,6 @@ import type { DropdownMenuItem } from '@nuxt/ui'
 
 const { teams, activeTeam, setActiveTeam } = useTeams()
 const { isInstanceAdmin, canCreateOrganizations } = useAuth()
-const { refreshNotes } = useNotes()
 const { refresh: refreshProjects } = useProjects()
 const { refresh: refreshCustomers } = useCustomers()
 
@@ -17,7 +16,6 @@ const route = useRoute()
 
 async function handleSelectTeam(id: string | null) {
   await setActiveTeam(id)
-  await refreshNotes()
   await refreshProjects()
   await refreshCustomers()
   // The board that was open belongs to the workspace we just left; its route

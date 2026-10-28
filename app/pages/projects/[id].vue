@@ -5,9 +5,8 @@ import { taskCountLabel, terminalColumnIds } from '#shared/utils/board'
 definePageMeta({ layout: 'app' })
 
 const route = useRoute()
-const { appMode, sidebarOpen } = useSidebar()
+const { sidebarOpen } = useSidebar()
 const searchOpen = useSearchModal()
-appMode.value = 'projects'
 
 const {
   activeProject,

@@ -9,10 +9,10 @@ export function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2)
 }
 
-// Same scoping rule as notes: active team's projects, or own team-less projects
-// in the personal workspace — plus, there, the projects of the customers the
-// user logs in for. The base filter lives in auth-helpers so the MCP server,
-// which authenticates with an API key instead of a session, applies it too.
+// Active team's projects, or own team-less projects in the personal workspace
+// — plus, there, the projects of the customers the user logs in for. The base
+// filter lives in auth-helpers so the MCP server, which authenticates with an
+// API key instead of a session, applies it too.
 export async function getProjectAccessFilter(event: H3Event) {
   const userId = event.context.session.user.id
   const teamId = await getUserActiveTeamId(event)
@@ -122,6 +122,30 @@ export async function subtasksOrdered(parentTaskId: string) {
     .from(projectTasks)
     .where(and(eq(projectTasks.parentTaskId, parentTaskId), isNull(projectTasks.deletedAt)))
     .orderBy(asc(projectTasks.position))
+}
+
+// Subtasks can nest under other subtasks, so re-nesting one (indent/outdent)
+// needs to check the chain it sits in rather than just its immediate parent.
+
+/** The outermost task in `taskId`'s chain of parents — itself, if it has none. */
+export async function rootTaskId(taskId: string): Promise<string> {
+  let currentId = taskId
+  for (;;) {
+    const [row] = await db.select({ parentTaskId: projectTasks.parentTaskId }).from(projectTasks).where(eq(projectTasks.id, currentId))
+    if (!row?.parentTaskId) return currentId
+    currentId = row.parentTaskId
+  }
+}
+
+/** Whether `ancestorId` is `taskId` itself or anywhere above it in its parent chain. */
+export async function isInAncestryChain(taskId: string, ancestorId: string): Promise<boolean> {
+  let currentId: string | null = taskId
+  while (currentId) {
+    if (currentId === ancestorId) return true
+    const [row] = await db.select({ parentTaskId: projectTasks.parentTaskId }).from(projectTasks).where(eq(projectTasks.id, currentId))
+    currentId = row?.parentTaskId ?? null
+  }
+  return false
 }
 
 /** Stamps who deleted a row, for a delete arriving through the browser. */

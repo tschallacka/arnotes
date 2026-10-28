@@ -2,15 +2,13 @@
 import { ref, watch } from 'vue'
 import { differenceInCalendarDays } from 'date-fns'
 
-// The share control, one copy for everything that can be handed out as a
-// read-only link. Notes and boards share the same deal — on or off, optionally
-// until a date — so they share the same panel; the parent only persists.
+// The share control: on or off, optionally until a date.
 const props = defineProps<{
   isPublic: boolean
   publicUntil: number | null
   /** Absolute URL of the public page, shown and copied once sharing is on. */
   link: string
-  /** What is being shared, lowercase, for the wording: 'note', 'board'. */
+  /** What is being shared, lowercase, for the wording, e.g. 'board'. */
   subject: string
   save: (isPublic: boolean, publicUntil: number | null) => Promise<{ isPublic: boolean, publicUntil: number | null }>
 }>()

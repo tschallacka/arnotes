@@ -1,4 +1,4 @@
-// A small chart language for notes and task descriptions, and the SVG it draws.
+// A small chart language for task descriptions and chat replies, and the SVG it draws.
 //
 // A chart is a fenced code block in the `chart` language, a few lines long:
 //

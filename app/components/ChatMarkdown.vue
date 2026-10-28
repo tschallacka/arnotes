@@ -5,9 +5,9 @@ import { renderChatMarkdown } from '~/utils/markdown'
 // An assistant reply, drawn. The prose goes through the sanitised chat
 // renderer as before; a ```chart or ```mermaid fence is lifted out and drawn
 // by the same component the editor uses, so a diagram the assistant answers
-// with looks the same as one it puts in a note. A fence that is still open
-// (the reply is streaming) stays plain code until its closing line arrives,
-// so a half-typed diagram never flashes a parse error.
+// with looks the same as one it puts in a task description. A fence that is
+// still open (the reply is streaming) stays plain code until its closing line
+// arrives, so a half-typed diagram never flashes a parse error.
 const props = defineProps<{ text: string }>()
 
 type Segment

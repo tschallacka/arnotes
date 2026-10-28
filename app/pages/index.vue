@@ -1,5 +1,5 @@
 <script setup lang="ts">
-await navigateTo('/note', { replace: true })
+await navigateTo('/projects', { replace: true })
 </script>
 
 <template>

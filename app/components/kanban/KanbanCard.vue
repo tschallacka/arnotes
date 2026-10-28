@@ -5,6 +5,7 @@ import { deletionSourceLabel } from '#shared/utils/board'
 import { descriptionDetails } from '~/utils/cardDetails'
 import { dueDayToMs, isOverdueDay } from '~/utils/dueDate'
 import { boardPerson, boardSubtasksOf } from '~/composables/useProjects'
+import type { ProjectTask } from '~/composables/useProjects'
 
 const props = defineProps<{
   task: {
@@ -69,7 +70,13 @@ const internal = computed(() => props.task.visibility === 'internal')
 
 const assignee = computed(() => boardPerson(props.task.assigneeId))
 
-const subtasks = computed(() => boardSubtasksOf(props.task.id))
+// The badge counts every subtask under the task, at any nesting depth, not
+// just its direct children.
+function allSubtasks(taskId: string): ProjectTask[] {
+  const direct = boardSubtasksOf(taskId)
+  return direct.flatMap(t => [t, ...allSubtasks(t.id)])
+}
+const subtasks = computed(() => allSubtasks(props.task.id))
 const subtasksDone = computed(() => subtasks.value.filter(t => t.completedAt != null).length)
 
 // One row of small print under the card, or none at all.

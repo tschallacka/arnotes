@@ -134,7 +134,7 @@ export function useTeams() {
   }
 
   async function leaveTeam(organizationId: string) {
-    // If you're the only member, leaving means the team (and its notes, via cascade) is deleted.
+    // If you're the only member, leaving means the team (and its boards, via cascade) is deleted.
     const isLastMember = activeTeamId.value === organizationId && activeTeamMembers.value.length === 1
     if (isLastMember) {
       return deleteTeam(organizationId)

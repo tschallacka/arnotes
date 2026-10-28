@@ -1,5 +1,4 @@
 import { reactive, ref, watch } from 'vue'
-import type { Note } from '~/composables/useNotes'
 import { markdownToHtml, htmlToMarkdown } from '~/utils/markdown'
 import { toWireMessages } from '~/utils/chatHistory'
 
@@ -22,7 +21,8 @@ export interface ChatMessage {
   toolCallId?: string
   name?: string
   label?: string
-  targetId?: string
+  /** Where "open" should navigate to, when the tool result points at something. */
+  targetUrl?: string
   pending?: boolean
   error?: boolean
   /** Tool arguments the model is still writing (assistant turns). */
@@ -112,36 +112,10 @@ if (import.meta.client) {
   }, { deep: true })
 }
 
-// ─── Tool execution (client owns the notes store) ────────────
+// ─── Tool execution (client owns the board store) ────────────
 
 function toStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : []
-}
-
-// Stored HTML content is "<h1>title</h1><p>#tag</p>…body", so the body is
-// everything after the heading and the tag paragraphs.
-function bodyOf(note: Note): string {
-  const lines = htmlToMarkdown(note.content).split('\n')
-  const body = lines
-    .slice(lines[0]?.startsWith('# ') ? 1 : 0)
-    .filter(line => !/^#[a-zA-Z][a-zA-Z0-9_]*$/.test(line.trim()))
-  return body.join('\n').trim()
-}
-
-function buildContent(title: string, tags: string[], bodyMd: string): string {
-  let html = `<h1>${title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h1>`
-  for (const tag of tags) html += `<p>#${tag}</p>`
-  if (bodyMd.trim()) html += markdownToHtml(bodyMd)
-  return html
-}
-
-function noteToResult(n: Note) {
-  return {
-    id: n.id,
-    title: n.title,
-    tags: n.tags,
-    updatedAt: new Date(n.updatedAt).toISOString()
-  }
 }
 
 // ─── Kanban helpers ──────────────────────────────────────────
@@ -193,63 +167,8 @@ function taskToResult(t: { id: string, projectId: string, title: string, tags: s
   }
 }
 
-async function executeTool(name: string, args: Record<string, unknown>): Promise<{ result: unknown, label: string }> {
-  const { getNote, searchNotes, createNote, updateNote, deleteNote } = useNotes()
-
-  const notFound = { result: { error: 'Note not found' }, label: 'Note not found' }
-
+async function executeTool(name: string, args: Record<string, unknown>): Promise<{ result: unknown, label: string, url?: string }> {
   switch (name) {
-    case 'search_notes': {
-      const query = String(args.query ?? '')
-      const pool = searchNotes(query, toStringArray(args.tags))
-      const results = pool.slice(0, 25).map(noteToResult)
-      return { result: { count: results.length, results }, label: `Searched "${query || 'all'}"` }
-    }
-    case 'get_note': {
-      const n = getNote(String(args.id ?? ''))
-      if (!n || n.deletedAt) return notFound
-      return {
-        result: { ...noteToResult(n), content: bodyOf(n) },
-        label: `Read "${n.title}"`
-      }
-    }
-    case 'create_note': {
-      // `select: false` — a background creation must not move the user's cursor
-      // to a different note while they are working.
-      const note = await createNote({
-        title: String(args.title ?? 'Untitled'),
-        content: String(args.content ?? ''),
-        tags: toStringArray(args.tags),
-        select: false
-      })
-      return { result: noteToResult(note), label: `Created note "${note.title}"` }
-    }
-    case 'update_note': {
-      const id = String(args.id ?? '')
-      const n = getNote(id)
-      if (!n || n.deletedAt) return notFound
-
-      if (args.title !== undefined || args.content !== undefined || args.tags !== undefined) {
-        const title = args.title !== undefined ? String(args.title) : n.title
-        const tags = args.tags !== undefined ? toStringArray(args.tags) : n.tags
-        const content = args.content !== undefined ? String(args.content) : bodyOf(n)
-        await updateNote(id, buildContent(title, tags, content))
-      }
-
-      const updated = getNote(id)
-      if (!updated) return { result: { error: 'Update failed' }, label: `Could not update "${n.title}"` }
-      return {
-        result: { ...noteToResult(updated), content: bodyOf(updated) },
-        label: `Updated "${updated.title}"`
-      }
-    }
-    case 'delete_note': {
-      const id = String(args.id ?? '')
-      const n = getNote(id)
-      if (!n || n.deletedAt) return notFound
-      await deleteNote(id) // soft delete — restorable from trash
-      return { result: { ok: true, id, deleted: true }, label: `Moved "${n.title}" to trash` }
-    }
     case 'list_boards': {
       const { projects } = useProjects()
       const results = projects.value.map(p => ({ id: p.id, name: p.name, updatedAt: new Date(p.updatedAt).toISOString() }))
@@ -260,13 +179,18 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       if (!loaded) return { result: { error: 'Board not found' }, label: 'Board not found' }
       return {
         result: boardToResult(loaded.project, loaded.columns, loaded.board.tasks),
-        label: `Read board "${loaded.project.name}"`
+        label: `Read board "${loaded.project.name}"`,
+        url: `/projects/${loaded.project.id}`
       }
     }
     case 'create_board': {
       const { createProject } = useProjects()
       const project = await createProject(String(args.name ?? 'Untitled project'))
-      return { result: { id: project.id, name: project.name, columns: ['Backlog', 'To do', 'Verify', 'Done'] }, label: `Created board "${project.name}"` }
+      return {
+        result: { id: project.id, name: project.name, columns: ['Backlog', 'To do', 'Verify', 'Done'] },
+        label: `Created board "${project.name}"`,
+        url: `/projects/${project.id}`
+      }
     }
     case 'search_tasks': {
       const { allTasks, projects } = useProjects()
@@ -302,7 +226,11 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
         String(args.description ?? '') ? markdownToHtml(String(args.description)) : '',
         toStringArray(args.tags).map(t => t.toLowerCase())
       )
-      return { result: taskToResult(task, loaded.project.name), label: `Created task "${task.title}"` }
+      return {
+        result: taskToResult(task, loaded.project.name),
+        label: `Created task "${task.title}"`,
+        url: `/projects/${loaded.project.id}?task=${task.id}`
+      }
     }
     case 'update_task': {
       const { allTasks, projects, updateTask } = useProjects()
@@ -318,7 +246,8 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const updated = await updateTask(id, patch)
       return {
         result: taskToResult(updated, projects.value.find(p => p.id === updated.projectId)?.name),
-        label: `Updated task "${updated.title}"`
+        label: `Updated task "${updated.title}"`,
+        url: `/projects/${updated.projectId}?task=${updated.id}`
       }
     }
     case 'move_task': {
@@ -343,7 +272,8 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
       const updated = await moveTask(id, column.id, null, null)
       return {
         result: { ...taskToResult(updated, projects.value.find(p => p.id === updated.projectId)?.name), moved: true },
-        label: `Moved "${updated.title}" to ${column.name}`
+        label: `Moved "${updated.title}" to ${column.name}`,
+        url: `/projects/${updated.projectId}?task=${updated.id}`
       }
     }
     case 'delete_task': {
@@ -507,11 +437,11 @@ export function useAiChat() {
         // Malformed arguments — run with none and let the model see the error.
       }
       try {
-        const { result, label } = await executeTool(call.function.name, args)
+        const { result, label, url } = await executeTool(call.function.name, args)
         toolMsg.content = JSON.stringify(result)
         toolMsg.label = label
-        const target = result as { id?: string, error?: string }
-        if (target?.id && !target.error) toolMsg.targetId = target.id
+        const target = result as { error?: string }
+        if (url && !target.error) toolMsg.targetUrl = url
       } catch (error) {
         toolMsg.content = JSON.stringify({ error: (error as Error).message })
         toolMsg.label = `${call.function.name} failed`

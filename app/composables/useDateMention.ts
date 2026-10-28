@@ -115,7 +115,7 @@ export const DateMention = Node.create({
         dom.classList.toggle('date-mention-past', isPast(date))
       }
       update()
-      // Relative labels ("in 20m", "today") go stale while the note is open.
+      // Relative labels ("in 20m", "today") go stale while the editor is open.
       const timer = setInterval(update, 30000)
       return {
         dom,

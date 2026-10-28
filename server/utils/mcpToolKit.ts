@@ -1,6 +1,4 @@
-// Shared shape and argument parsing for MCP tools. Notes and boards each own a
-// registry file; both build tools out of the pieces here so a tool behaves the
-// same whichever feature it belongs to.
+// Shared shape and argument parsing for the board MCP tools in mcpBoardTools.ts.
 import type { ApiKeyScope } from '../db/schema'
 import type { ApiKeyContext } from './api-keys'
 
@@ -70,12 +68,12 @@ export function newId(): string {
  * The id inside a reference someone pasted.
  *
  * Taskmanager already addresses everything by a URL the user can copy straight out
- * of the address bar — /note/<id>, /projects/<id>, /projects/<id>?task=<id> and
- * their /public/ equivalents — so a pasted link is the easiest way to point an
+ * of the address bar — /projects/<id>, /projects/<id>?task=<id> and their
+ * /public/ equivalents — so a pasted link is the easiest way to point an
  * agent at one exact thing, with no title to describe and no id to retype.
  *
- * `prefer: 'task'` reads the task a board link has open; 'page' reads the note
- * or board the link is for. Anything that is not a link comes back untouched
+ * `prefer: 'task'` reads the task a board link has open; 'page' reads the
+ * board the link is for. Anything that is not a link comes back untouched
  * and goes on being used as an id or a name, so a board actually named
  * "Q1/Q2 roadmap" is still found by its name.
  */
@@ -100,7 +98,7 @@ export function idFromReference(ref: string, prefer: 'task' | 'page' = 'page'): 
 
 /**
  * A short excerpt of plain text, for the list-shaped results that show what a
- * note or task is about without spending the whole body on it.
+ * task is about without spending the whole body on it.
  *
  * With search terms it centres on the first one that hits, keeping `lead`
  * characters of run-up; with none it takes the opening of the text, which is

@@ -6,7 +6,7 @@ import { getUserActiveTeamId } from '../../utils/auth-helpers'
 /**
  * Lists the caller's API keys for the workspace they are currently in. Keys are
  * bound to one workspace, so the list follows the active team the same way the
- * notes list does.
+ * board list does.
  */
 export default defineEventHandler(async (event) => {
   const userId = event.context.session.user.id

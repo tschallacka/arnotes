@@ -1,7 +1,7 @@
 import { db } from '../../db'
 import { projects, projectTasks, VISIBILITIES, type Visibility } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { requireTask, requireColumn, requireStaff, columnTasksOrdered, subtasksOrdered, positionBetween, uiDeletion } from '../../utils/projects'
+import { requireTask, requireColumn, requireStaff, columnTasksOrdered, subtasksOrdered, positionBetween, uiDeletion, rootTaskId, isInAncestryChain } from '../../utils/projects'
 import { publishFromEvent } from '../../utils/realtime'
 import { removeTaskAttachments } from '../../utils/attachments'
 import { requireAssignable } from '../../utils/people'
@@ -15,10 +15,9 @@ export default defineEventHandler(async (event) => {
   requireStaff(project)
 
   if (event.method === 'DELETE') {
-    // Same two stages as a note: the first delete puts the card in the board's
-    // trash, and deleting it again from there is what removes it.
-    // A subtask has no place on the board for its trash to be drawn in, so it
-    // goes in one step.
+    // Two stages: the first delete puts the card in the board's trash, and
+    // deleting it again from there is what removes it. A subtask has no place
+    // on the board for its trash to be drawn in, so it goes in one step.
     const permanent = task.deletedAt !== null || task.parentTaskId !== null
 
     if (permanent) {
@@ -51,6 +50,7 @@ export default defineEventHandler(async (event) => {
     dueOn?: string | null
     completed?: boolean
     columnId?: string
+    parentTaskId?: string | null
     beforeId?: string | null
     afterId?: string | null
   }>(event)
@@ -65,6 +65,7 @@ export default defineEventHandler(async (event) => {
     completedAt?: number | null
     columnId?: string
     previousColumnId?: string | null
+    parentTaskId?: string
     position?: number
     updatedAt: number
   } = {
@@ -87,14 +88,43 @@ export default defineEventHandler(async (event) => {
     patch.completedAt = body.completed ? (task.completedAt ?? Date.now()) : null
   }
 
-  // A subtask is ordered inside its parent and follows the parent's column, so
-  // it only ever moves among its siblings.
+  // A subtask follows its parent's column, so it only ever moves among the
+  // tasks nested somewhere under the same top-level task. Within that tree it
+  // can also be re-nested under a different parent (indent/outdent).
   if (task.parentTaskId) {
     if (body.columnId && body.columnId !== task.columnId) {
       throw createError({ statusCode: 400, message: 'A subtask moves with its parent' })
     }
-    if (body.beforeId !== undefined || body.afterId !== undefined) {
-      const siblings = (await subtasksOrdered(task.parentTaskId))
+
+    let parentId = task.parentTaskId
+    if (body.parentTaskId !== undefined && body.parentTaskId !== task.parentTaskId) {
+      const newParentId = body.parentTaskId
+      if (!newParentId) {
+        throw createError({ statusCode: 400, message: 'A subtask cannot be promoted to a card' })
+      }
+      if (newParentId === id) {
+        throw createError({ statusCode: 400, message: 'A subtask cannot be its own parent' })
+      }
+      const [newParent] = await db.select().from(projectTasks).where(eq(projectTasks.id, newParentId))
+      if (!newParent || newParent.deletedAt || newParent.projectId !== task.projectId) {
+        throw createError({ statusCode: 400, message: 'New parent not found' })
+      }
+      // Re-nesting under one of its own descendants would turn the chain into a
+      // loop, so the new parent must not sit anywhere below the task being moved.
+      if (await isInAncestryChain(newParentId, id)) {
+        throw createError({ statusCode: 400, message: 'A subtask cannot be nested inside its own descendant' })
+      }
+      // Bounded to the task it already belongs to — re-nesting across onto a
+      // different card's subtask tree is not supported.
+      if (await rootTaskId(newParentId) !== await rootTaskId(id)) {
+        throw createError({ statusCode: 400, message: 'A subtask can only be nested within its own task' })
+      }
+      patch.parentTaskId = newParentId
+      parentId = newParentId
+    }
+
+    if (body.beforeId !== undefined || body.afterId !== undefined || patch.parentTaskId) {
+      const siblings = (await subtasksOrdered(parentId))
         .filter(t => t.id !== id)
         .map(t => ({ id: t.id, position: t.position }))
       patch.position = await positionBetween(siblings, body.beforeId ?? null, body.afterId ?? null, async (ids) => {

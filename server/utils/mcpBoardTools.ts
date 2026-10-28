@@ -6,7 +6,7 @@
 import { and, asc, count, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { projects, projectColumns, projectTasks, taskComments, user, apiKeys } from '../db/schema'
-import type { Project, ProjectColumn, ProjectTask } from '../db/schema'
+import type { ApiKeyScope, Project, ProjectColumn, ProjectTask } from '../db/schema'
 import type { ApiKeyContext } from './api-keys'
 import { projectAccessFilter } from './auth-helpers'
 import { htmlToMarkdown, htmlToPlainText, markdownToHtml } from './markdown'
@@ -1065,3 +1065,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
     }
   }
 ]
+
+export function toolsForScopes(scopes: ApiKeyScope[]): McpToolDefinition[] {
+  return MCP_BOARD_TOOLS.filter(tool => scopes.includes(tool.scope))
+}

@@ -1,6 +1,6 @@
 // Tool definitions for the AI chat assistant. Tools are advertised to the
 // model here (OpenAI-style function schemas) but executed on the client,
-// which owns the notes/projects stores and the search index.
+// which owns the projects store and the search index.
 
 export interface ChatToolCallDef {
   type: 'function'
@@ -16,82 +16,6 @@ export interface ChatToolCallDef {
 }
 
 export const CHAT_TOOLS: ChatToolCallDef[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'search_notes',
-      description: 'Full-text search across the user\'s notes (titles, content, tags). Use this before answering questions about their notes, or to find notes to open or edit.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Search query. Empty string matches everything.' },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags all results must have.' }
-        },
-        required: ['query']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_note',
-      description: 'Read one note in full: body as markdown and tags. Use ids returned by search_notes.',
-      parameters: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: 'The note id from a previous search or creation result.' }
-        },
-        required: ['id']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_note',
-      description: 'Create a new note with markdown content.',
-      parameters: {
-        type: 'object',
-        properties: {
-          title: { type: 'string', description: 'Note title.' },
-          content: { type: 'string', description: 'Markdown body of the note. A ```mermaid fence is drawn as a diagram and a ```chart fence as a bar, line or pie chart (lines like "type: bar", "labels: Jan, Feb", "Sales: 12, 19").' },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Tags (no # prefix).' }
-        },
-        required: ['title']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'update_note',
-      description: 'Edit an existing note. Only provided fields change; body and tags are replaced as a whole when given.',
-      parameters: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: 'The note id.' },
-          title: { type: 'string', description: 'New title.' },
-          content: { type: 'string', description: 'Full replacement markdown body. A ```mermaid fence is drawn as a diagram and a ```chart fence as a bar, line or pie chart (lines like "type: bar", "labels: Jan, Feb", "Sales: 12, 19").' },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Full replacement tag list (no # prefix).' }
-        },
-        required: ['id']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'delete_note',
-      description: 'Move a note to the trash (soft delete, recoverable from the trash view).',
-      parameters: {
-        type: 'object',
-        properties: {
-          id: { type: 'string', description: 'The note id.' }
-        },
-        required: ['id']
-      }
-    }
-  },
   {
     type: 'function',
     function: {
@@ -213,16 +137,15 @@ export const CHAT_TOOLS: ChatToolCallDef[] = [
   }
 ]
 
-export const CHAT_SYSTEM_PROMPT = `You are Arnai, the AI assistant built into Taskmanager, a self-hosted projects, tasks and notes app. A note has a title, a markdown body and tags. A board (project) has columns (kanban stages like Backlog, To do, Verify, Done) and tasks; a task has a title, a markdown description and labels used for priority or workstream.
+export const CHAT_SYSTEM_PROMPT = `You are Arnai, the AI assistant built into Taskmanager, a self-hosted projects and tasks app. A board (project) has columns (kanban stages like Backlog, To do, Verify, Done) and tasks; a task has a title, a markdown description and labels used for priority or workstream.
 
-You can search, read, create and edit the user's notes and boards through the provided tools. Ground every answer in tool results — search or inspect first, then answer. After creating or editing anything, briefly confirm what you did; do not dump raw JSON at the user.
+You can search, read, create and edit the user's boards through the provided tools. Ground every answer in tool results — search or inspect first, then answer. After creating or editing anything, briefly confirm what you did; do not dump raw JSON at the user.
 
 Guidelines:
-- For questions like "find the note about X" or "summarize what I wrote about Y", search and summarize concisely (list titles, group where useful).
 - For board work, use get_board before create_task or move_task so board, column and task names match exactly.
-- When editing, always pass complete replacement values for content, description and tags, not deltas.
-- Use "- [ ]" checklist items when the user wants a checklist in a note or task description.
-- Diagrams and charts are fenced code blocks, in replies as well as in note bodies and task descriptions: a \`\`\`mermaid block (flowchart, sequenceDiagram, gantt, …) is drawn as a diagram; a \`\`\`chart block is drawn as a simple chart. A chart block is a few lines: "type: bar" (or line, pie), optional "title: …", "labels: a, b, c" for the x axis or the pie slices, then one "Series name: 1, 2, 3" line per series. Prefer a chart block over a table when the user asks to visualise numbers, and a mermaid block when they ask for a diagram, flow or timeline.
-- delete_note and delete_task both only move things to the trash, where the user can restore them — confirm intent in your reply, not with an extra question, when the request was explicit.
+- When editing, always pass complete replacement values for description and tags, not deltas.
+- Use "- [ ]" checklist items when the user wants a checklist in a task description.
+- Diagrams and charts are fenced code blocks, in replies as well as in task descriptions: a \`\`\`mermaid block (flowchart, sequenceDiagram, gantt, …) is drawn as a diagram; a \`\`\`chart block is drawn as a simple chart. A chart block is a few lines: "type: bar" (or line, pie), optional "title: …", "labels: a, b, c" for the x axis or the pie slices, then one "Series name: 1, 2, 3" line per series. Prefer a chart block over a table when the user asks to visualise numbers, and a mermaid block when they ask for a diagram, flow or timeline.
+- delete_task only moves a task to the trash, where the user can restore it — confirm intent in your reply, not with an extra question, when the request was explicit.
 
 Dates are YYYY-MM-DD. Be concise, use markdown, and reply in the user's language.`

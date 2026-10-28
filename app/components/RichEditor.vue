@@ -30,11 +30,10 @@ import EditorBlockHandle from '~/components/editor/EditorBlockHandle.vue'
 import EditorHighlightPicker from '~/components/editor/EditorHighlightPicker.vue'
 import EditorAiPrompt from '~/components/editor/EditorAiPrompt.vue'
 
-// Shared rich text editor: the exact editing surface used by notes, reusable
-// for task descriptions. Parents own persistence via v-model; this component
-// only edits. `uploadImage` opts into image support: the parent supplies the
-// upload (notes and tasks each have an attachment endpoint). The #toolbar-right
-// slot hosts context actions.
+// Shared rich text editor, used for task descriptions and comments. Parents
+// own persistence via v-model; this component only edits. `uploadImage` opts
+// into image support: the parent supplies the upload. The #toolbar-right slot
+// hosts context actions.
 //
 // This file wires the parts together. The parts themselves live next door:
 // the schema, clipboard, block and decoration extensions in `utils/editor`,

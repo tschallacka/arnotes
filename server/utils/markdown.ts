@@ -1,9 +1,10 @@
-// Server-side Markdown ⇄ note-HTML conversion.
+// Server-side Markdown ⇄ task-HTML conversion.
 //
-// Notes are stored as the HTML the Tiptap editor produces, but agents speak
-// Markdown, so every MCP tool converts on the way in and out. The browser
-// utilities in `app/utils/markdown.ts` do the same job with the native DOM;
-// here Turndown's DOM implementation stands in for it.
+// Task descriptions and comments are stored as the HTML the Tiptap editor
+// produces, but agents speak Markdown, so every MCP board tool converts on
+// the way in and out. The browser utilities in `app/utils/markdown.ts` do the
+// same job with the native DOM; here Turndown's DOM implementation stands in
+// for it.
 import { marked } from 'marked'
 import TurndownService from 'turndown'
 // The package ships its type declaration under the module name `domino` rather
@@ -120,7 +121,7 @@ export function markdownToHtml(text: string): string {
   return doc.body.innerHTML
 }
 
-/** Note HTML → Markdown, matching what the browser export produces. */
+/** Task HTML → Markdown, matching what the browser export produces. */
 export function htmlToMarkdown(html: string): string {
   if (!html) return ''
   return normalizeMarkdown(createTurndownService().turndown(html))
@@ -130,74 +131,9 @@ export function htmlToMarkdown(html: string): string {
 // paragraph below it into one word. Closing block tags become spaces first.
 const CLOSING_BLOCK_TAG = /<\/(?:h[1-6]|p|div|li|ul|ol|tr|td|th|blockquote|pre|section|article)>/gi
 
-/** Plain text of a note, used for matching search terms without HTML noise. */
+/** Plain text of a task's HTML body, used for matching search terms without HTML noise. */
 export function htmlToPlainText(html: string): string {
   if (!html) return ''
   const spaced = html.replace(CLOSING_BLOCK_TAG, match => `${match} `)
   return (parseFragment(spaced).body.textContent ?? '').replace(/\s+/g, ' ').trim()
-}
-
-// Mirrors `extractTags` in app/composables/useNotes.ts: tags live inline in the
-// body as #hashtags, so they must be re-derived from content on every write.
-export function extractTags(html: string): string[] {
-  const cleaned = html
-    .replace(/<pre[\s\S]*?<\/pre>/gi, '')
-    .replace(/<code[\s\S]*?<\/code>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-  const matches = cleaned.match(/#([a-zA-Z][a-zA-Z0-9_]*)/g) ?? []
-  return [...new Set(matches.map(m => m.slice(1).toLowerCase()))]
-}
-
-/** Mirrors `extractTitle` in app/composables/useNotes.ts. */
-export function extractTitle(html: string): string {
-  if (!html) return 'Untitled'
-  const doc = parseFragment(html)
-  const first = doc.querySelector('h1,h2,h3,h4,p,li,blockquote,pre')
-  const text = ((first ?? doc.body).textContent ?? '').replace(/\s+/g, ' ').trim()
-  return text.slice(0, 80) || 'Untitled'
-}
-
-/**
- * Puts the title in front of the body as its own heading, leaving whatever the
- * body already contains untouched. This is how `createNote` in the app builds a
- * new note.
- */
-export function prependTitle(html: string, title: string): string {
-  return `<h1>${escapeHtmlText(title)}</h1>` + html
-}
-
-/** Mirrors `setTitleInContent` in app/composables/useNotes.ts. */
-export function setTitleInContent(html: string, title: string): string {
-  const doc = parseFragment(html)
-  const heading = doc.querySelector('h1,h2,h3,h4')
-  if (heading) heading.textContent = title
-  else doc.body.insertAdjacentHTML('afterbegin', `<h1>${escapeHtmlText(title)}</h1>`)
-  return doc.body.innerHTML
-}
-
-const TAG_PARAGRAPH = /^#([a-zA-Z][a-zA-Z0-9_]*)$/
-
-function normalizeTag(tag: string): string | null {
-  const cleaned = tag.trim().replace(/^#/, '').toLowerCase()
-  return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(cleaned) ? cleaned : null
-}
-
-/**
- * Replaces a note's tag list. Tags live in the body as `#hashtags`, so the
- * standalone tag paragraphs the app writes are dropped and the requested set is
- * appended in their place. Tags written inline in prose are part of the text and
- * are deliberately left alone.
- */
-export function setNoteTags(html: string, tags: string[]): string {
-  const doc = parseFragment(html)
-
-  for (const p of Array.from(doc.querySelectorAll('p'))) {
-    if (TAG_PARAGRAPH.test((p.textContent ?? '').trim())) p.remove()
-  }
-
-  const wanted = [...new Set(tags.map(normalizeTag).filter((tag): tag is string => tag !== null))]
-  const inline = new Set(extractTags(doc.body.innerHTML))
-  const missing = wanted.filter(tag => !inline.has(tag))
-
-  return doc.body.innerHTML + missing.map(tag => `<p>#${tag}</p>`).join('')
 }

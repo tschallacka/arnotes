@@ -6,13 +6,12 @@ import { ref } from 'vue'
 // somewhere this tab cannot see — an AI agent over MCP, a teammate, or the same
 // user in another tab.
 
-// The ids on `notes` and `projects` address one shared note or board and are
-// only read by the public pages (see usePublicLive); a workspace client
-// refetches the whole slice either way.
+// The id on `projects` addresses one shared board and is only read by the
+// public pages (see usePublicLive); a workspace client refetches the whole
+// slice either way.
 type RealtimeMessage
   = | { type: 'ready' }
     | { type: 'pong' }
-    | { type: 'notes', noteId?: string }
     | { type: 'projects', projectId?: string }
     | { type: 'board', projectId: string }
 
@@ -29,7 +28,7 @@ let stopped = false
 
 // Changes arrive in bursts — a drag writes a task, a board and a project row —
 // so refetches are coalesced per slice.
-const pending = { notes: false, projects: false, boards: new Set<string>() }
+const pending = { projects: false, boards: new Set<string>() }
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 const FLUSH_DELAY = 250
 
@@ -52,17 +51,14 @@ function scheduleFlush() {
 
 async function flush() {
   flushTimer = null
-  const { notes, projects } = pending
+  const { projects } = pending
   const boards = [...pending.boards]
-  pending.notes = false
   pending.projects = false
   pending.boards.clear()
 
-  const { syncNotes } = useNotes()
   const { syncProjects, reloadBoardQuiet, activeProjectId, commentsTaskId, loadComments } = useProjects()
 
   const work: Promise<unknown>[] = []
-  if (notes) work.push(syncNotes())
 
   // Either kind of board news moves the sidebar's task counts and "edited" line.
   if (projects || boards.length) work.push(syncProjects())
@@ -82,9 +78,6 @@ async function flush() {
 
 function handle(message: RealtimeMessage) {
   switch (message.type) {
-    case 'notes':
-      pending.notes = true
-      break
     case 'projects':
       pending.projects = true
       break
@@ -176,7 +169,6 @@ export function useRealtime() {
       attempt = 0
       connect()
     }
-    pending.notes = true
     pending.projects = true
     scheduleFlush()
   }

@@ -1,8 +1,8 @@
 import { requireTask } from '../../../utils/projects'
 import { countAttachments, MAX_ATTACHMENTS, storeImageUpload, taskAttachmentDir } from '../../../utils/attachments'
 
-// Images pasted or dropped into a task description. Same rules as a note's
-// attachments; the file lives with the task and goes when the task does.
+// Images pasted or dropped into a task description. The file lives with the
+// task and goes when the task does.
 export default defineEventHandler(async (event) => {
   const taskId = getRouterParam(event, 'id')!
   const { task } = await requireTask(event, taskId)

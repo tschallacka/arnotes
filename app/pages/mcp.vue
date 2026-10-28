@@ -47,35 +47,15 @@ const curlCheck = computed(() =>
 
 const skill = computed(() => `---
 name: taskmanager
-description: Search, read and write the user's Taskmanager notes and kanban boards through the Taskmanager MCP server. Use whenever the user asks what they wrote down, refers to their notes or a #tag, or asks about their projects, boards or tasks.
+description: Read and write the user's Taskmanager kanban boards through the Taskmanager MCP server. Use whenever the user asks about their projects, boards or tasks.
 ---
 
 # Working with Taskmanager
 
-Taskmanager is the user's note-taking app, with kanban boards beside the notes. A
-note has a title, a Markdown body and tags, and tags are written inline in the
-body as \`#hashtags\`. A board has columns — kanban stages such as Backlog, To do,
-Verify, Done — holding tasks; a task has a title, a Markdown description, labels
-and a running log of short updates written in inline Markdown.
-
-## Finding things
-
-- Start with \`search_notes\`. Every word in the query has to appear in a note, so
-  keep queries short — two or three words beats a sentence.
-- \`list_tags\` shows which tags exist. Use it when the user names a topic and you
-  are not sure what they tag it with.
-- \`search_notes\` returns snippets, not full notes. Call \`get_note\` before
-  summarising or quoting anything.
-
-## Writing
-
-- \`create_note\` takes a title and a Markdown body. Do not repeat the title as a
-  heading in the body and do not write \`#tags\` by hand — pass \`tags\` instead.
-- \`update_note\` replaces whole fields. Read the note first, edit the Markdown you
-  got back, then send the complete new body. Never send a fragment.
-- \`delete_note\` moves a note to the trash and \`restore_note\` brings it back.
-  Nothing is ever permanently deleted, so prefer trashing over rewriting a note
-  into oblivion.
+Taskmanager is a kanban board app for projects and tasks. A board has columns —
+kanban stages such as Backlog, To do, Verify, Done — holding tasks; a task has a
+title, a Markdown description, labels and a running log of short updates written
+in inline Markdown.
 
 ## Boards
 
@@ -94,10 +74,10 @@ and a running log of short updates written in inline Markdown.
 - \`move_task\` is how a task changes stage — moving it into Done is what
   "finished" means here. \`update_task\` replaces whole fields, so read the task
   first when editing part of a description.
-- Pointing at one exact thing is easiest with a link: paste the URL of a note,
-  a board, or a board with a task open (\`/projects/<id>?task=<id>\`) into
-  \`get_note\`, \`get_board\` or \`get_task\` and it resolves to that resource — no
-  title to describe, no id to retype.
+- Pointing at one exact thing is easiest with a link: paste the URL of a board,
+  or a board with a task open (\`/projects/<id>?task=<id>\`) into \`get_board\` or
+  \`get_task\` and it resolves to that resource — no title to describe, no id to
+  retype.
 - A task's updates are the user's own log — "on staging", "customer came back
   with feedback", "needs another pass". \`get_task\` reads them, but there is no
   tool to post one and you should not try to work around that: record what you
@@ -114,8 +94,8 @@ and a running log of short updates written in inline Markdown.
 
 ## Habits
 
-- Ground every answer about the notes or boards in what the tools returned;
-  never guess at content you have not read.
+- Ground every answer about the boards in what the tools returned; never guess
+  at content you have not read.
 - Match the user's existing tags and labels rather than inventing near-duplicates
   (\`#meeting\` vs \`#meetings\`).
 - Say briefly what you changed after a write. Do not paste raw tool JSON back.
@@ -171,11 +151,11 @@ async function copy(text: string, id: string) {
               </p>
               <p class="text-sm text-muted">
                 The Model Context Protocol is how AI agents plug into apps. Taskmanager ships an MCP server, so
-                Claude Code, Claude Desktop and any other MCP client can search your notes, read them, and
-                write new ones — working with your notes the way you would.
+                Claude Code, Claude Desktop and any other MCP client can read your boards and tasks, and
+                create, edit and move them — working with your boards the way you would.
               </p>
               <p class="text-sm text-muted">
-                Everything runs against your own install. No note ever leaves this server except to the agent
+                Everything runs against your own install. No data ever leaves this server except to the agent
                 you connect yourself.
               </p>
             </div>
@@ -191,7 +171,7 @@ async function copy(text: string, id: string) {
           <div class="px-5 py-4 space-y-3">
             <p class="text-sm text-muted">
               Keys live in Settings and belong to one workspace — a key made in a team reaches that team's
-              notes, a key made in your personal workspace reaches only your own. Give it
+              boards, a key made in your personal workspace reaches only your own. Give it
               <span class="font-medium text-default">Read</span> to let an agent search and read, and
               <span class="font-medium text-default">Write</span> to let it create and edit.
             </p>

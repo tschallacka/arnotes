@@ -3,7 +3,6 @@ import { auth } from '../lib/auth'
 // Everything under these needs a session. `/api/invitations` is deliberately not
 // here: an invite link has to be readable before its recipient has an account.
 const PROTECTED_PREFIXES = [
-  '/api/notes',
   '/api/settings',
   '/api/ai',
   '/api/chat',

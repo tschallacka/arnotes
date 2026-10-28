@@ -39,7 +39,7 @@ export function isApiKeyScope(value: unknown): value is ApiKeyScope {
 export interface ApiKeyContext {
   keyId: string
   userId: string
-  /** The single workspace this key may touch; null for the owner's personal notes. */
+  /** The single workspace this key may touch; null for the owner's personal workspace. */
   teamId: string | null
   scopes: ApiKeyScope[]
 }

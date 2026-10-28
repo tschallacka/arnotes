@@ -4,8 +4,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
 // ─── Hashtags ────────────────────────────────────────────────
 
-// `#tags` in the text are what a note is filed under; they are tinted where
-// they stand rather than being a node of their own.
+// `#tags` typed in the body are tinted where they stand rather than being a
+// node of their own.
 export const HashtagHighlight = Extension.create({
   name: 'hashtagHighlight',
   addProseMirrorPlugins() {

@@ -4,36 +4,18 @@ import { relativeTime } from '~/composables/useRelativeTime'
 import { tagChipClass } from '~/utils/tagColors'
 import { expandTagToken, type TagRequirement } from '#shared/utils/tags'
 
-const { activeNoteId, activeTag, searchQuery, allTags, searchNotes, createNote } = useNotes()
 const { searchBoards, allTasks } = useProjects()
 
 const open = useSearchModal()
 const query = ref('')
 const highlighted = ref(0)
 
-// ─── Scope: everything, notes only, tasks only ───────────────
-
-// Remembered, because which half of the workspace someone searches is a habit
-// rather than a per-search decision.
-type Scope = 'all' | 'notes' | 'tasks'
-
-const scope = useCookie<Scope>('search-scope', { default: () => 'all' })
-
-const scopes: { value: Scope, label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'notes', label: 'Notes' },
-  { value: 'tasks', label: 'Tasks' }
-]
-
-const wantsNotes = computed(() => scope.value !== 'tasks')
-const wantsTasks = computed(() => scope.value !== 'notes')
-
 // ─── Query parsing: "#tag1 #tag2 search text" ────────────────
 
-// Every tag the box knows about: the notes' own tags, plus what a board offers
-// a `#tag` to match on — its labels and the words of its name.
+// Every tag the box knows about: a board offers a `#tag` to match on — its
+// task labels and the words of its name.
 const knownTags = computed(() => {
-  const tags = new Set(allTags.value.map(t => t.tag))
+  const tags = new Set<string>()
   for (const task of allTasks.value) {
     for (const label of task.tags) tags.add(label.toLowerCase())
     for (const word of task.projectName.toLowerCase().split(/[^\w]+/)) if (word) tags.add(word)
@@ -63,13 +45,7 @@ const matchedTags = computed(() => new Set(tagFilters.value.flat()))
 const hasQuery = computed(() => parsed.value.text.trim().length > 0)
 const isFiltered = computed(() => hasQuery.value || tagFilters.value.length > 0)
 
-// Board hits ride along with note hits — one modal, whole workspace.
-const noteResults = computed(() =>
-  wantsNotes.value ? searchNotes(parsed.value.text, tagFilters.value).slice(0, 8) : []
-)
-const boardResults = computed(() =>
-  wantsTasks.value ? searchBoards(parsed.value.text, tagFilters.value) : { tasks: [], projects: [] }
-)
+const boardResults = computed(() => searchBoards(parsed.value.text, tagFilters.value))
 
 // Autocomplete for the trailing "#par" token. It is a shortcut now rather than
 // a requirement — the partial already filters on its own.
@@ -88,9 +64,6 @@ function completeTag(tag: string) {
 watch(query, () => {
   highlighted.value = 0
 })
-watch(scope, () => {
-  highlighted.value = 0
-})
 watch(open, (v) => {
   if (v) {
     query.value = ''
@@ -100,14 +73,6 @@ watch(open, (v) => {
 
 // ─── Actions ─────────────────────────────────────────────────
 
-function selectNote(id: string) {
-  activeNoteId.value = id
-  activeTag.value = null
-  searchQuery.value = ''
-  open.value = false
-  navigateTo(`/note/${id}`)
-}
-
 function openTask(projectId: string, taskId: string) {
   open.value = false
   navigateTo(`/projects/${projectId}?task=${taskId}`)
@@ -116,12 +81,6 @@ function openTask(projectId: string, taskId: string) {
 function openProject(projectId: string) {
   open.value = false
   navigateTo(`/projects/${projectId}`)
-}
-
-async function handleCreateNote() {
-  const note = await createNote({ title: hasQuery.value ? parsed.value.text.trim() : undefined })
-  open.value = false
-  navigateTo(`/note/${note.id}`)
 }
 
 // ─── Rows ────────────────────────────────────────────────────
@@ -137,9 +96,7 @@ interface Row {
   snippet?: string
   meta?: string
   time?: string
-  noteTags?: string[]
   labels?: string[]
-  create?: boolean
   run: () => void
 }
 
@@ -147,21 +104,7 @@ const rows = computed<Row[]>(() => {
   const list: Row[] = []
   const filtered = isFiltered.value
 
-  const notes = filtered ? noteResults.value : (wantsNotes.value ? searchNotes('').slice(0, 6) : [])
-  for (const note of notes) {
-    list.push({
-      key: `note-${note.id}`,
-      section: filtered ? 'Notes' : 'Recent notes',
-      icon: 'i-lucide-file-text',
-      title: note.title || 'Untitled',
-      snippet: hasQuery.value ? smartSnippet(note.content) : undefined,
-      time: relativeTime(note.updatedAt),
-      noteTags: note.tags.slice(0, 3),
-      run: () => selectNote(note.id)
-    })
-  }
-
-  const tasks = filtered ? boardResults.value.tasks : (wantsTasks.value ? allTasks.value.slice(0, 4) : [])
+  const tasks = filtered ? boardResults.value.tasks : allTasks.value.slice(0, 6)
   for (const task of tasks) {
     list.push({
       key: `task-${task.id}`,
@@ -186,20 +129,10 @@ const rows = computed<Row[]>(() => {
     })
   }
 
-  if (hasQuery.value || !filtered) {
-    list.push({
-      key: 'create',
-      section: 'Actions',
-      icon: 'i-lucide-plus',
-      title: hasQuery.value ? `Create note “${parsed.value.text.trim()}”` : 'New note',
-      create: true,
-      run: handleCreateNote
-    })
-  }
   return list
 })
 
-const hasResults = computed(() => rows.value.some(row => !row.create))
+const hasResults = computed(() => rows.value.length > 0)
 
 // ─── Keyboard navigation ─────────────────────────────────────
 
@@ -212,11 +145,6 @@ function move(step: number) {
   nextTick(() => listEl.value?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' }))
 }
 
-function cycleScope(step: number) {
-  const index = scopes.findIndex(option => option.value === scope.value)
-  scope.value = scopes[(index + step + scopes.length) % scopes.length]!.value
-}
-
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'ArrowDown') {
     e.preventDefault()
@@ -227,11 +155,10 @@ function onKeydown(e: KeyboardEvent) {
   } else if (e.key === 'Enter') {
     e.preventDefault()
     rows.value[highlighted.value]?.run()
-  } else if (e.key === 'Tab') {
-    // Tab finishes a half-typed #tag; with none to finish it switches scope.
+  } else if (e.key === 'Tab' && tagSuggestions.value.length > 0) {
+    // Finishes a half-typed #tag.
     e.preventDefault()
-    if (tagSuggestions.value.length > 0) completeTag(tagSuggestions.value[0]!)
-    else cycleScope(e.shiftKey ? -1 : 1)
+    completeTag(tagSuggestions.value[0]!)
   }
 }
 
@@ -315,24 +242,9 @@ function smartSnippet(html: string): string {
           <input
             v-model="query"
             autofocus
-            placeholder="Search notes and tasks…"
+            placeholder="Search tasks and boards…"
             class="min-w-0 flex-1 bg-transparent text-[15px] text-highlighted outline-none placeholder:text-dimmed"
           >
-          <div class="flex shrink-0 items-center gap-0.5 rounded-md bg-elevated/70 p-0.5">
-            <button
-              v-for="option in scopes"
-              :key="option.value"
-              type="button"
-              tabindex="-1"
-              class="rounded px-2 py-0.5 text-xs font-medium transition-colors"
-              :class="scope === option.value
-                ? 'bg-default text-highlighted shadow-sm'
-                : 'text-muted hover:text-default'"
-              @click="scope = option.value"
-            >
-              {{ option.label }}
-            </button>
-          </div>
         </div>
 
         <!-- #tag autocomplete -->
@@ -375,16 +287,12 @@ function smartSnippet(html: string): string {
             :key="row.key"
           >
             <p
-              v-if="row.section !== rows[i - 1]?.section && !row.create"
+              v-if="row.section !== rows[i - 1]?.section"
               class="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-dimmed"
               :class="i === 0 ? 'pt-1.5' : 'pt-3'"
             >
               {{ row.section }}
             </p>
-            <div
-              v-else-if="row.create && i > 0"
-              class="mx-2.5 my-1.5 border-t border-default"
-            />
 
             <button
               type="button"
@@ -398,28 +306,21 @@ function smartSnippet(html: string): string {
               <UIcon
                 :name="row.icon"
                 class="size-4 shrink-0"
-                :class="i === highlighted || row.create ? 'text-primary' : 'text-dimmed'"
+                :class="i === highlighted ? 'text-primary' : 'text-dimmed'"
               />
 
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2">
                   <!-- eslint-disable vue/no-v-html -- `highlight` escapes its input -->
                   <span
-                    class="truncate text-sm"
-                    :class="row.create ? 'text-muted' : 'font-medium text-highlighted'"
-                    v-html="row.create ? escapeHtml(row.title) : highlight(row.title)"
+                    class="truncate text-sm font-medium text-highlighted"
+                    v-html="highlight(row.title)"
                   />
-                  <span
-                    v-for="tag in row.noteTags"
-                    :key="tag"
-                    class="hidden shrink-0 text-xs sm:inline"
-                    :class="matchedTags.has(tag) ? 'font-medium text-primary' : 'text-dimmed'"
-                  >#{{ tag }}</span>
                   <span
                     v-for="label in row.labels"
                     :key="label"
                     class="hidden shrink-0 rounded px-1.5 py-px text-[0.6875rem] font-medium ring-1 ring-inset sm:inline"
-                    :class="tagChipClass(label)"
+                    :class="[tagChipClass(label), matchedTags.has(label) ? 'font-semibold' : '']"
                   >{{ label }}</span>
                 </div>
                 <p
@@ -460,10 +361,6 @@ function smartSnippet(html: string): string {
             size="sm"
             value="↵"
           /> open</span>
-          <span class="hidden items-center gap-1 sm:flex"><UKbd
-            size="sm"
-            value="Tab"
-          /> scope</span>
           <span class="hidden items-center gap-1 sm:flex"><UKbd
             size="sm"
             value="#"

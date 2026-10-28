@@ -8,8 +8,8 @@ import { convertTaskLists, htmlToMarkdown, markdownToHtml } from '~/utils/markdo
 // is handed and makes the best document of it: formatted HTML stays formatted,
 // Markdown source becomes what it describes, a URL over a selection becomes a
 // link, source code becomes a code block, an image is uploaded. Going out, the
-// plain-text side of a copy is Markdown, so a note pastes cleanly into a
-// terminal, a commit message or another Markdown tool.
+// plain-text side of a copy is Markdown, so a description pastes cleanly into
+// a terminal, a commit message or another Markdown tool.
 
 export type ImageUploader = (file: File) => Promise<string | null>
 
