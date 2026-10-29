@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { addDays, differenceInCalendarDays, format, startOfDay, startOfWeek } from 'date-fns'
 import { dueDayToMs } from '~/utils/dueDate'
+import { errorMessage } from '~/utils/untypedFetch'
 
 const emit = defineEmits<{ openTask: [taskId: string] }>()
 
-const { boardColumns, visibleColumnTasks, isTrashed } = useProjects()
+const { boardColumns, visibleColumnTasks, isTrashed, updateTask } = useProjects()
+const toast = useToast()
 
 const DAY_W = 28
 const MIN_DAYS = 6 * 7
@@ -42,12 +44,107 @@ const weeks = computed(() =>
 
 const todayX = computed(() => differenceInCalendarDays(startOfDay(new Date()), range.value.start) * DAY_W + DAY_W / 2)
 
-function bar(task: { startOn?: string | null, dueOn?: string | null }) {
-  const from = startOfDay(new Date(dueDayToMs((task.startOn ?? task.dueOn)!)))
-  const to = startOfDay(new Date(dueDayToMs((task.dueOn ?? task.startOn)!)))
+type DatedTask = { id: string, startOn?: string | null, dueOn?: string | null }
+
+// A bar runs from the start date to the due date; a task with only one of them
+// is a single day.
+function span(task: DatedTask) {
+  return {
+    from: startOfDay(new Date(dueDayToMs((task.startOn ?? task.dueOn)!))),
+    to: startOfDay(new Date(dueDayToMs((task.dueOn ?? task.startOn)!)))
+  }
+}
+
+// ─── Dragging ───────────────────────────────────────────────
+// The body of a bar moves the task, its two edges change the start or the due
+// date. Everything snaps to whole days. The bar follows the pointer while it is
+// held and the dates are saved once, when it is let go.
+
+type DragMode = 'move' | 'start' | 'end'
+
+const drag = ref<{ id: string, mode: DragMode, originX: number, delta: number, moved: boolean } | null>(null)
+// A drag ends in a click on the bar; that click must not open the task.
+let justDragged = false
+
+// The task's span after a drag of `delta` days. An edge stops at the other one,
+// so a bar can shrink to a single day but never turn inside out.
+function shifted(task: DatedTask, mode: DragMode, delta: number) {
+  const { from, to } = span(task)
+  if (mode === 'move') return { from: addDays(from, delta), to: addDays(to, delta) }
+  if (mode === 'start') {
+    const moved = addDays(from, delta)
+    return { from: moved > to ? to : moved, to }
+  }
+  const moved = addDays(to, delta)
+  return { from, to: moved < from ? from : moved }
+}
+
+// The span the bar is drawn with: the task's own, or where an unfinished drag has it.
+function liveSpan(task: DatedTask) {
+  const current = drag.value
+  return current?.id === task.id ? shifted(task, current.mode, current.delta) : span(task)
+}
+
+function bar(task: DatedTask) {
+  const { from, to } = liveSpan(task)
   const left = differenceInCalendarDays(from, range.value.start) * DAY_W
   const width = (Math.max(0, differenceInCalendarDays(to, from)) + 1) * DAY_W
   return { left: `${left + 2}px`, width: `${width - 4}px` }
+}
+
+function dragLabel(task: DatedTask) {
+  const { from, to } = liveSpan(task)
+  return differenceInCalendarDays(to, from) ? `${format(from, 'MMM d')} – ${format(to, 'MMM d')}` : format(from, 'MMM d')
+}
+
+function onDragStart(event: PointerEvent, task: DatedTask, mode: DragMode) {
+  // A finger on a bar is a scroll or a tap, as it always was.
+  if (event.button !== 0 || event.pointerType === 'touch') return
+  event.stopPropagation()
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  drag.value = { id: task.id, mode, originX: event.clientX, delta: 0, moved: false }
+}
+
+function onDragMove(event: PointerEvent) {
+  const current = drag.value
+  if (!current) return
+  const dx = event.clientX - current.originX
+  if (Math.abs(dx) > 3) current.moved = true
+  current.delta = Math.round(dx / DAY_W)
+}
+
+async function onDragEnd(task: DatedTask) {
+  const current = drag.value
+  drag.value = null
+  if (!current?.moved) return
+  justDragged = true
+  setTimeout(() => {
+    justDragged = false
+  }, 0)
+  if (!current.delta) return
+
+  const iso = (date: Date) => format(date, 'yyyy-MM-dd')
+  const { from, to } = shifted(task, current.mode, current.delta)
+
+  const patch: { startOn?: string, dueOn?: string } = {}
+  if (current.mode === 'move') {
+    if (task.startOn) patch.startOn = iso(from)
+    if (task.dueOn) patch.dueOn = iso(to)
+  } else if (current.mode === 'start') {
+    patch.startOn = iso(from)
+  } else {
+    patch.dueOn = iso(to)
+  }
+
+  try {
+    await updateTask(task.id, patch)
+  } catch (e) {
+    toast.add({ title: errorMessage(e, 'Could not change the dates'), icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+function onBarClick(task: DatedTask) {
+  if (!justDragged) emit('openTask', task.id)
 }
 
 const scroller = ref<HTMLElement | null>(null)
@@ -131,14 +228,42 @@ watch(() => sections.value.length, () => nextTick(scrollToToday), { once: true }
             </button>
             <div class="relative flex-1">
               <button
-                class="absolute top-1.5 h-6 truncate rounded-md px-2 text-left text-xs transition-colors"
-                :class="task.completedAt ? 'bg-success/25 text-default' : 'bg-primary/80 text-inverted hover:bg-primary'"
+                class="group absolute top-1.5 h-6 select-none rounded-md px-2 text-left text-xs"
+                :class="[
+                  task.completedAt ? 'bg-success/25 text-default' : 'bg-primary/80 text-inverted hover:bg-primary',
+                  drag?.id === task.id ? 'z-10 cursor-grabbing shadow-md ring-2 ring-primary/40' : 'cursor-grab transition-colors'
+                ]"
                 :style="bar(task)"
                 data-timeline-bar
                 :title="task.title"
-                @click="emit('openTask', task.id)"
+                @pointerdown="onDragStart($event, task, 'move')"
+                @pointermove="onDragMove"
+                @pointerup="onDragEnd(task)"
+                @pointercancel="drag = null"
+                @click="onBarClick(task)"
               >
-                {{ task.title }}
+                <span class="block truncate">{{ task.title }}</span>
+                <span
+                  class="absolute inset-y-0 left-0 w-2 cursor-ew-resize rounded-l-md opacity-0 transition-opacity group-hover:bg-black/20 group-hover:opacity-100"
+                  data-timeline-handle="start"
+                  @pointerdown="onDragStart($event, task, 'start')"
+                  @pointermove.stop="onDragMove"
+                  @pointerup.stop="onDragEnd(task)"
+                  @click.stop
+                />
+                <span
+                  class="absolute inset-y-0 right-0 w-2 cursor-ew-resize rounded-r-md opacity-0 transition-opacity group-hover:bg-black/20 group-hover:opacity-100"
+                  data-timeline-handle="end"
+                  @pointerdown="onDragStart($event, task, 'end')"
+                  @pointermove.stop="onDragMove"
+                  @pointerup.stop="onDragEnd(task)"
+                  @click.stop
+                />
+                <span
+                  v-if="drag?.id === task.id && drag.moved"
+                  class="pointer-events-none absolute -top-6 left-0 whitespace-nowrap rounded-md border border-default bg-default px-1.5 py-0.5 text-[0.625rem] font-medium tabular-nums text-default shadow-md"
+                  data-timeline-label
+                >{{ dragLabel(task) }}</span>
               </button>
             </div>
           </div>
