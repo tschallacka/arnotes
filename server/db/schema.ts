@@ -211,6 +211,8 @@ export const projects = pgTable(
     description: text('description').notNull().default(''),
     // Self-reported health shown on the Overview: on_track, at_risk or off_track; NULL = unset.
     status: text('status'),
+    // Which dashboard widgets the project shows, in order. NULL is the default set.
+    dashboardWidgets: json('dashboard_widgets').$type<string[] | null>(),
     // Colours the user has pinned to this board's task labels, keyed by label.
     // A label with no entry keeps the colour derived from its own text, so a
     // board reads the same as it always did until someone changes one.

@@ -18,6 +18,8 @@ export interface Project {
   name: string
   description?: string
   status?: 'on_track' | 'at_risk' | 'off_track' | null
+  // The dashboard widgets this project shows, in order; null is the default set.
+  dashboardWidgets?: string[] | null
   customerId?: string | null
   customerName?: string | null
   audience?: Audience
@@ -460,7 +462,7 @@ export function useProjects() {
     return updated
   }
 
-  async function updateProjectDetails(id: string, patch: { description?: string, status?: Project['status'] }) {
+  async function updateProjectDetails(id: string, patch: { description?: string, status?: Project['status'], dashboardWidgets?: string[] | null }) {
     const updated = await $fetch<Project>(`/api/projects/${id}`, {
       method: 'PUT', headers: realtimeHeaders(),
       body: patch

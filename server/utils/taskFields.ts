@@ -16,6 +16,21 @@ export function parseProjectStatus(value: unknown): ProjectStatus | null {
 /** The most a project description may hold. */
 export const MAX_PROJECT_DESCRIPTION = 20000
 
+export const MAX_DASHBOARD_WIDGETS = 30
+// A built-in widget, or one drawn from a custom field: `field:<id>`.
+const DASHBOARD_WIDGET_ID = /^(?:tiles|sections|completion|timeline|assignees|field:[A-Za-z0-9]{1,40})$/
+
+/** The widgets a dashboard shows, in order, or null for the default set. Throws 400 otherwise. */
+export function parseDashboardWidgets(value: unknown): string[] | null {
+  if (value === null) return null
+  if (!Array.isArray(value) || value.length > MAX_DASHBOARD_WIDGETS) {
+    throw createError({ statusCode: 400, message: 'Dashboard widgets are a short list of widget ids' })
+  }
+  const ids = value.map(id => typeof id === 'string' && DASHBOARD_WIDGET_ID.test(id) ? id : null)
+  if (ids.includes(null)) throw createError({ statusCode: 400, message: 'Unknown dashboard widget' })
+  return [...new Set(ids as string[])]
+}
+
 /** A real calendar day as `YYYY-MM-DD`, or null to clear it. Throws 400 otherwise. */
 export function parseDueOn(value: unknown): string | null {
   if (value === null || value === '') return null

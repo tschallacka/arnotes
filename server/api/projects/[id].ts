@@ -6,7 +6,7 @@ import { requireOrgCustomer } from '../../utils/customers'
 import { isAccentColor } from '#shared/utils/colors'
 import { closeTopic, publicProjectTopic, publishFromEvent } from '../../utils/realtime'
 import { removeTaskAttachments } from '../../utils/attachments'
-import { MAX_PROJECT_DESCRIPTION, parseProjectStatus } from '../../utils/taskFields'
+import { MAX_PROJECT_DESCRIPTION, parseDashboardWidgets, parseProjectStatus } from '../../utils/taskFields'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
       name?: string
       description?: string
       status?: string | null
+      dashboardWidgets?: string[] | null
       isPublic?: boolean
       publicUntil?: number | null
       labelColor?: { label?: string, color?: string | null }
@@ -51,12 +52,14 @@ export default defineEventHandler(async (event) => {
     }
 
     const status = body.status === undefined ? undefined : parseProjectStatus(body.status)
+    const dashboardWidgets = body.dashboardWidgets === undefined ? undefined : parseDashboardWidgets(body.dashboardWidgets)
 
     const [updated] = await db.update(projects)
       .set({
         name: name || project.name,
         ...(typeof body.description === 'string' && { description: body.description.slice(0, MAX_PROJECT_DESCRIPTION) }),
         ...(status !== undefined && { status }),
+        ...(dashboardWidgets !== undefined && { dashboardWidgets }),
         ...(body.isPublic !== undefined && { isPublic: body.isPublic }),
         ...(body.publicUntil !== undefined && { publicUntil: body.publicUntil }),
         ...(labelColors !== undefined && { labelColors }),
