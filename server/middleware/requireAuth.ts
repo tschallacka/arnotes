@@ -10,6 +10,8 @@ const PROTECTED_PREFIXES = [
   '/api/projects',
   '/api/tasks',
   '/api/columns',
+  '/api/time',
+  '/api/timer',
   '/api/customers',
   '/api/admin'
 ]

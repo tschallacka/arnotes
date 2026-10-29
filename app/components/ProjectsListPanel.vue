@@ -119,6 +119,8 @@ function menuItems(project: { id: string, name: string }) {
       </NuxtLink>
     </nav>
 
+    <RunningTimer />
+
     <div class="flex items-center justify-between px-2 pb-1">
       <span class="text-xs font-semibold uppercase tracking-wider text-dimmed">Projects</span>
       <UButton

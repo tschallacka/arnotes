@@ -86,7 +86,7 @@ async function findColumn(board: Project, ref: string): Promise<ProjectColumn> {
   return match
 }
 
-async function findTask(
+export async function findTask(
   reference: string,
   context: ApiKeyContext,
   options: { includeDeleted?: boolean } = {}

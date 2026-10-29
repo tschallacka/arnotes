@@ -910,6 +910,11 @@ const menuItems = computed(() => [[
             :task-id="shownTask.id"
           />
 
+          <KanbanTaskTime
+            v-if="!readonly && shownTask"
+            :task-id="shownTask.id"
+          />
+
           <!-- Subtasks: an Asana-style checklist, nestable and drag-reorderable. -->
           <div
             v-if="subtasks.length || !readonly"

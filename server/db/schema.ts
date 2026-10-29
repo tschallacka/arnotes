@@ -377,6 +377,39 @@ export const taskFieldValues = pgTable(
   ]
 )
 
+// Time spent, as the people who spent it logged it: whole minutes against a task
+// on a calendar day. The project is kept on the row so a project's timesheet is
+// one query, and it goes with the task or the project.
+export const timeEntries = pgTable(
+  'time_entries',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull().references(() => projectTasks.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    minutes: integer('minutes').notNull(),
+    // `YYYY-MM-DD`: the day the work was done, which is not always the day it was logged.
+    day: text('day').notNull(),
+    note: text('note').notNull().default(''),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [
+    index('time_entries_task_id_idx').on(table.taskId),
+    index('time_entries_project_day_idx').on(table.projectId, table.day),
+    index('time_entries_user_day_idx').on(table.userId, table.day)
+  ]
+)
+
+export type TimeEntry = typeof timeEntries.$inferSelect
+
+// The timer someone has running: at most one each, because starting another
+// stops the first and logs it.
+export const timeTimers = pgTable('time_timers', {
+  userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
+  taskId: text('task_id').notNull().references(() => projectTasks.id, { onDelete: 'cascade' }),
+  startedAt: bigint('started_at', { mode: 'number' }).notNull()
+})
+
 export const taskComments = pgTable(
   'task_comments',
   {
