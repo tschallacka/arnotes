@@ -12,8 +12,10 @@ import { projectAccessFilter } from './auth-helpers'
 import { htmlToMarkdown, htmlToPlainText, markdownToHtml } from './markdown'
 import { columnTasksOrdered, positionBetween, projectColumnsOrdered, renumberColumnTasks, RESTORED } from './projects'
 import { ACCENT_COLORS, isAccentColor } from '#shared/utils/colors'
-import { McpToolError, excerpt, idFromReference, newId, optionalLimit, optionalString, optionalStringArray, requireString } from './mcpToolKit'
+import { McpToolError, asToolError, excerpt, idFromReference, newId, optionalBoolean, optionalLimit, optionalString, optionalStringArray, requireString } from './mcpToolKit'
 import type { McpToolDefinition } from './mcpToolKit'
+import { MAX_PROJECT_DESCRIPTION, PROJECT_STATUSES, parseDueOn, parseProjectStatus } from './taskFields'
+import { projectPeople } from './people'
 
 const MAX_LABELS = 10
 const DEFAULT_COLUMN_NAMES = ['Backlog', 'To do', 'Verify', 'Done']
@@ -119,6 +121,54 @@ function touchBoard(boardId: string) {
   return db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, boardId))
 }
 
+// ─── people and schedule ──────────────────────────────────────────────────────
+
+/** Who can be named on a board's tasks, by id, so cards can say who has them. */
+async function peopleNames(board: Project): Promise<Map<string, string>> {
+  return new Map((await projectPeople(board)).map(person => [person.id, person.name || person.email]))
+}
+
+/** A person on the board, found by id, email or name as the app shows it. */
+async function findPerson(board: Project, reference: string): Promise<string> {
+  const people = await projectPeople(board)
+  const needle = reference.trim().toLowerCase()
+  const match = people.find(person => person.id === reference)
+    ?? people.find(person => person.email.toLowerCase() === needle)
+    ?? people.find(person => (person.name || '').toLowerCase() === needle)
+  if (!match) {
+    throw new McpToolError(
+      `"${reference}" is not on board "${board.name}". People who can be assigned: ${people.map(person => person.name || person.email).join(', ')}.`
+    )
+  }
+  return match.id
+}
+
+/**
+ * The schedule, assignee and done mark from a create or update call, checked by
+ * the same rules as the panel. An empty string clears a date or the assignee.
+ */
+async function readTaskFields(args: Record<string, unknown>, board: Project, current?: ProjectTask) {
+  const dueOn = optionalString(args, 'dueOn')
+  const startOn = optionalString(args, 'startOn')
+  const assignee = optionalString(args, 'assignee')
+  const completed = optionalBoolean(args, 'completed')
+
+  return {
+    ...(dueOn !== undefined ? { dueOn: asToolError(() => parseDueOn(dueOn)) } : {}),
+    ...(startOn !== undefined ? { startOn: asToolError(() => parseDueOn(startOn)) } : {}),
+    ...(assignee !== undefined ? { assigneeId: assignee.trim() ? await findPerson(board, assignee) : null } : {}),
+    // Ticking a task that is already done keeps the moment it was finished.
+    ...(completed !== undefined ? { completedAt: completed ? (current?.completedAt ?? Date.now()) : null } : {})
+  }
+}
+
+const TASK_FIELD_PROPERTIES = {
+  dueOn: { type: 'string', description: 'Due date as YYYY-MM-DD. Pass an empty string to clear it.' },
+  startOn: { type: 'string', description: 'Start date as YYYY-MM-DD, shown as the left edge of the task on the timeline. Pass an empty string to clear it.' },
+  assignee: { type: 'string', description: 'Who has the task: a person on the board by name, email or id. Pass an empty string to unassign.' },
+  completed: { type: 'boolean', description: 'Mark the task done (true) or not done (false). This is separate from its column.' }
+}
+
 // ─── shapes ───────────────────────────────────────────────────────────────────
 
 function normalizeLabels(labels: string[]): string[] {
@@ -136,10 +186,21 @@ async function commentCounts(taskIds: string[]): Promise<Map<string, number>> {
   return new Map(rows.map(row => [row.taskId, Number(row.total)]))
 }
 
+/** Dates, assignee and the done mark, for the tasks that have them. */
+function taskSchedule(task: ProjectTask, people?: Map<string, string>) {
+  return {
+    ...(task.dueOn ? { dueOn: task.dueOn } : {}),
+    ...(task.startOn ? { startOn: task.startOn } : {}),
+    ...(task.assigneeId ? { assignee: people?.get(task.assigneeId) ?? task.assigneeId } : {}),
+    ...(task.completedAt ? { completed: true, completedAt: new Date(task.completedAt).toISOString() } : {})
+  }
+}
+
 function boardSummary(board: Project, columns: number, tasks: number) {
   return {
     id: board.id,
     name: board.name,
+    ...(board.status ? { status: board.status } : {}),
     columns,
     tasks,
     createdAt: new Date(board.createdAt).toISOString(),
@@ -181,6 +242,7 @@ function taskCard(task: ProjectTask, options: {
   terms?: string[]
   column?: string
   board?: string
+  people?: Map<string, string>
 } = {}) {
   const detail = options.detail ?? 'summary'
   const terms = options.terms ?? []
@@ -191,6 +253,8 @@ function taskCard(task: ProjectTask, options: {
     ...(options.column ? { column: options.column } : {}),
     title: task.title,
     labels: task.tags,
+    // Like the update count, a field nobody has filled in is left out.
+    ...taskSchedule(task, options.people),
     ...(detail === 'titles'
       ? {}
       : detail === 'full'
@@ -229,6 +293,7 @@ async function taskDetail(task: ProjectTask, board: Project) {
     column: column?.name ?? task.columnId,
     title: task.title,
     labels: task.tags,
+    ...taskSchedule(task, await peopleNames(board)),
     description: task.description ? htmlToMarkdown(task.description) : '',
     createdAt: new Date(task.createdAt).toISOString(),
     updatedAt: new Date(task.updatedAt).toISOString(),
@@ -429,10 +494,13 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         return { column, total: all.length, shown: all.slice(0, perColumn) }
       })
       const counts = await commentCounts(grouped.flatMap(group => group.shown.map(task => task.id)))
+      const people = await peopleNames(board)
 
       return {
         id: board.id,
         name: board.name,
+        ...(board.status ? { status: board.status } : {}),
+        ...(board.description ? { description: board.description } : {}),
         updatedAt: new Date(board.updatedAt).toISOString(),
         taskCount: Number(total?.tasks ?? 0),
         // Say which columns were left out, so a narrowed read does not look like
@@ -445,7 +513,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
           name: column.name,
           taskCount: total,
           ...(total > shown.length ? { omitted: total - shown.length } : {}),
-          tasks: shown.map(task => taskCard(task, { detail, updates: counts.get(task.id) }))
+          tasks: shown.map(task => taskCard(task, { detail, updates: counts.get(task.id), people }))
         }))
       }
     }
@@ -591,7 +659,9 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Board name.' },
-        columns: { type: 'array', items: { type: 'string' }, description: 'Column names, left to right. Defaults to Backlog, To do, Verify, Done.' }
+        columns: { type: 'array', items: { type: 'string' }, description: 'Column names, left to right. Defaults to Backlog, To do, Verify, Done.' },
+        description: { type: 'string', description: 'What the project is for, shown on its Overview.' },
+        status: { type: 'string', description: `Project health: ${PROJECT_STATUSES.join(', ')}.` }
       },
       required: ['name']
     },
@@ -601,6 +671,8 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         .map(columnName => columnName.trim())
         .filter(Boolean)
       const columnNames = requested.length ? requested : DEFAULT_COLUMN_NAMES
+      const description = optionalString(args, 'description')
+      const status = optionalString(args, 'status')
       const now = Date.now()
       const id = newId()
 
@@ -609,6 +681,8 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         userId: context.userId,
         teamId: context.teamId,
         name,
+        ...(description !== undefined ? { description: description.slice(0, MAX_PROJECT_DESCRIPTION) } : {}),
+        ...(status !== undefined ? { status: asToolError(() => parseProjectStatus(status)) } : {}),
         createdAt: now,
         updatedAt: now
       }).returning()
@@ -628,29 +702,48 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
   },
   {
     name: 'update_board',
-    title: 'Rename a board',
-    description: 'Rename an existing board.',
+    title: 'Update a board',
+    description: 'Rename a board, or change its description or health status. Only the fields you pass change.',
     scope: 'boards:write',
     readOnly: false,
     inputSchema: {
       type: 'object',
       properties: {
         board: { type: 'string', description: 'Board id or current name.' },
-        name: { type: 'string', description: 'New board name.' }
+        name: { type: 'string', description: 'New board name.' },
+        description: { type: 'string', description: 'Complete replacement description, shown on the board\'s Overview. Pass an empty string to clear it.' },
+        status: { type: 'string', description: `Project health: ${PROJECT_STATUSES.join(', ')}. Pass an empty string to clear it.` }
       },
-      required: ['board', 'name']
+      required: ['board']
     },
     async handler(args, context) {
       const board = await findBoard(requireString(args, 'board'), context)
-      const name = requireString(args, 'name').trim()
+      const name = optionalString(args, 'name')?.trim()
+      const description = optionalString(args, 'description')
+      const status = optionalString(args, 'status')
+
+      if (!name && description === undefined && status === undefined) {
+        throw new McpToolError('Pass at least one of "name", "description" or "status".')
+      }
 
       const [updated] = await db
         .update(projects)
-        .set({ name, updatedAt: Date.now() })
+        .set({
+          ...(name ? { name } : {}),
+          ...(description !== undefined ? { description: description.slice(0, MAX_PROJECT_DESCRIPTION) } : {}),
+          ...(status !== undefined ? { status: asToolError(() => parseProjectStatus(status)) } : {}),
+          updatedAt: Date.now()
+        })
         .where(eq(projects.id, board.id))
         .returning()
 
-      return { renamed: true, from: board.name, id: updated!.id, name: updated!.name }
+      return {
+        updated: true,
+        id: updated!.id,
+        name: updated!.name,
+        ...(name && name !== board.name ? { renamedFrom: board.name } : {}),
+        ...(updated!.status ? { status: updated!.status } : {})
+      }
     }
   },
   // There is deliberately no delete_board tool. A board is the one thing here
@@ -871,7 +964,8 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         description: { type: 'string', description: 'Markdown description. Supports headings, lists, "- [ ]" checklists, tables and fenced code. A ```mermaid block is drawn as a diagram; a ```chart block is drawn as a bar, line or pie chart from lines like "type: bar", "labels: Jan, Feb" and "Sales: 12, 19".' },
         labels: { type: 'array', items: { type: 'string' }, description: 'Labels for the task, without the # prefix.' },
         position: { type: 'string', description: '"top" or "bottom" of the column. Defaults to "bottom".' },
-        after: { type: 'string', description: 'Place the task directly after this task id instead.' }
+        after: { type: 'string', description: 'Place the task directly after this task id instead.' },
+        ...TASK_FIELD_PROPERTIES
       },
       required: ['board', 'column', 'title']
     },
@@ -881,6 +975,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       const title = requireString(args, 'title').trim()
       const markdown = optionalString(args, 'description') ?? ''
       const labels = normalizeLabels(optionalStringArray(args, 'labels') ?? [])
+      const fields = await readTaskFields(args, board)
       const now = Date.now()
 
       const [task] = await db.insert(projectTasks).values({
@@ -890,6 +985,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         title,
         description: markdown ? markdownToHtml(markdown) : '',
         tags: labels,
+        ...fields,
         position: await taskPosition(column.id, readPlacement(args), optionalString(args, 'after')),
         createdAt: now,
         updatedAt: now
@@ -898,13 +994,13 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       await touchBoard(board.id)
       // The caller wrote the description; echoing it back with an empty update
       // thread teaches it nothing. The ids and the card are the useful receipt.
-      return { created: true, board: { id: board.id, name: board.name }, task: taskCard(task!, { column: column.name }) }
+      return { created: true, board: { id: board.id, name: board.name }, task: taskCard(task!, { column: column.name, people: await peopleNames(board) }) }
     }
   },
   {
     name: 'update_task',
     title: 'Update a task',
-    description: 'Update a task\'s title, description or labels. Only the fields you pass change, and each replaces its value entirely — read the task first when editing part of a description. Use move_task to change its column.',
+    description: 'Update a task\'s title, description, labels, dates, assignee or done mark. Only the fields you pass change, and each replaces its value entirely — read the task first when editing part of a description. Use move_task to change its column.',
     scope: 'boards:write',
     readOnly: false,
     inputSchema: {
@@ -913,7 +1009,8 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         id: { type: 'string', description: 'The task id.' },
         title: { type: 'string', description: 'New title.' },
         description: { type: 'string', description: 'Complete replacement Markdown description.' },
-        labels: { type: 'array', items: { type: 'string' }, description: 'Complete replacement label list, without the # prefix. Pass an empty array to clear them.' }
+        labels: { type: 'array', items: { type: 'string' }, description: 'Complete replacement label list, without the # prefix. Pass an empty array to clear them.' },
+        ...TASK_FIELD_PROPERTIES
       },
       required: ['id']
     },
@@ -922,9 +1019,10 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       const title = optionalString(args, 'title')?.trim()
       const markdown = optionalString(args, 'description')
       const labels = optionalStringArray(args, 'labels')
+      const fields = await readTaskFields(args, board, task)
 
-      if (title === undefined && markdown === undefined && labels === undefined) {
-        throw new McpToolError('Pass at least one of "title", "description" or "labels".')
+      if (title === undefined && markdown === undefined && labels === undefined && !Object.keys(fields).length) {
+        throw new McpToolError('Pass at least one of "title", "description", "labels", "dueOn", "startOn", "assignee" or "completed".')
       }
 
       const [updated] = await db
@@ -933,6 +1031,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
           ...(title ? { title } : {}),
           ...(markdown !== undefined ? { description: markdown ? markdownToHtml(markdown) : '' } : {}),
           ...(labels !== undefined ? { tags: normalizeLabels(labels) } : {}),
+          ...fields,
           updatedAt: Date.now()
         })
         .where(eq(projectTasks.id, task.id))
@@ -940,7 +1039,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
 
       const column = await findColumn(board, task.columnId)
       await touchBoard(board.id)
-      return { updated: true, board: { id: board.id, name: board.name }, task: taskCard(updated!, { column: column.name }) }
+      return { updated: true, board: { id: board.id, name: board.name }, task: taskCard(updated!, { column: column.name, people: await peopleNames(board) }) }
     }
   },
   {

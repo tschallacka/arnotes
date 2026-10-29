@@ -21,7 +21,7 @@ const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]!
 
 const INSTRUCTIONS = `Taskmanager is a kanban board app for projects and tasks.
 
-A board has columns (kanban stages such as Backlog, To do, Verify, Done) holding tasks; a task has a title, a Markdown description, labels, and a running log of short updates. Tasks can have their own subtask checklist in the app, but there is no tool here to manage subtasks yet.
+A board has columns (kanban stages such as Backlog, To do, Verify, Done) holding tasks, a description and a health status (on_track, at_risk, off_track); a task has a title, a Markdown description, labels, an optional start and due date (YYYY-MM-DD), an optional assignee, a done mark that is separate from its column, and a running log of short updates. Tasks can have their own subtask checklist in the app, but there is no tool here to manage subtasks yet.
 
 Search or list before answering questions about the user's boards, and ground answers in what the tools return. Read the board with get_board before creating or moving tasks so board, column and task names match. When editing, send the complete replacement description rather than a fragment — read the task first if you are only changing part of it.
 

@@ -42,6 +42,29 @@ export function optionalString(args: Record<string, unknown>, key: string): stri
   return value
 }
 
+export function optionalBoolean(args: Record<string, unknown>, key: string): boolean | undefined {
+  const value = args[key]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'boolean') throw new McpToolError(`"${key}" must be true or false.`)
+  return value
+}
+
+/**
+ * Runs one of the shared field checks, which reject with an HTTP error, and
+ * hands its message back as a failure the model can read and retry.
+ */
+export function asToolError<T>(check: () => T): T {
+  try {
+    return check()
+  } catch (error) {
+    const failure = error as { statusCode?: number, message?: string, statusMessage?: string }
+    if (failure.statusCode) {
+      throw new McpToolError(failure.message ?? failure.statusMessage ?? 'That value is not valid.')
+    }
+    throw error
+  }
+}
+
 export function optionalStringArray(args: Record<string, unknown>, key: string): string[] | undefined {
   const value = args[key]
   if (value === undefined || value === null) return undefined
