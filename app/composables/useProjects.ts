@@ -14,6 +14,8 @@ export type Audience = 'staff' | 'customer'
 export interface Project {
   id: string
   name: string
+  description?: string
+  status?: 'on_track' | 'at_risk' | 'off_track' | null
   customerId?: string | null
   customerName?: string | null
   audience?: Audience
@@ -440,6 +442,15 @@ export function useProjects() {
     const updated = await $fetch<Project>(`/api/projects/${id}`, {
       method: 'PUT', headers: realtimeHeaders(),
       body: { name }
+    })
+    upsertProject(updated)
+    return updated
+  }
+
+  async function updateProjectDetails(id: string, patch: { description?: string, status?: Project['status'] }) {
+    const updated = await $fetch<Project>(`/api/projects/${id}`, {
+      method: 'PUT', headers: realtimeHeaders(),
+      body: patch
     })
     upsertProject(updated)
     return updated
@@ -935,6 +946,7 @@ export function useProjects() {
     createProject,
     setProjectCustomer,
     renameProject,
+    updateProjectDetails,
     updateProjectSharing,
     deleteProject,
     loadBoard,

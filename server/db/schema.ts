@@ -208,6 +208,9 @@ export const projects = pgTable(
     // customer must belong to that same organisation.
     customerId: text('customer_id').references(() => customers.id, { onDelete: 'set null' }),
     name: text('name').notNull().default('Untitled project'),
+    description: text('description').notNull().default(''),
+    // Self-reported health shown on the Overview: on_track, at_risk or off_track; NULL = unset.
+    status: text('status'),
     // Colours the user has pinned to this board's task labels, keyed by label.
     // A label with no entry keeps the colour derived from its own text, so a
     // board reads the same as it always did until someone changes one.

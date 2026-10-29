@@ -31,6 +31,7 @@ const {
 const projectId = computed(() => route.params.id as string)
 
 const VIEWS = [
+  { key: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
   { key: 'board', label: 'Board', icon: 'i-lucide-kanban' },
   { key: 'list', label: 'List', icon: 'i-lucide-list' },
   { key: 'timeline', label: 'Timeline', icon: 'i-lucide-gantt-chart' },
@@ -443,8 +444,12 @@ useSeoMeta({
         />
       </div>
       <template v-else-if="projectId">
+        <KanbanProjectOverviewView
+          v-if="view === 'overview'"
+          :project-id="projectId"
+        />
         <KanbanBoard
-          v-if="view === 'board'"
+          v-else-if="view === 'board'"
           :project-id="projectId"
           @open-task="drawerTaskId = $event"
         />

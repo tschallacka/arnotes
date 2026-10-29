@@ -15,6 +15,8 @@ export default defineEventHandler(async (event) => {
   if (event.method === 'PUT') {
     const body = await readBody<{
       name?: string
+      description?: string
+      status?: string | null
       isPublic?: boolean
       publicUntil?: number | null
       labelColor?: { label?: string, color?: string | null }
@@ -47,9 +49,15 @@ export default defineEventHandler(async (event) => {
       labelColors = color === null ? rest : { ...rest, [label]: color }
     }
 
+    if (body.status !== undefined && body.status !== null && !['on_track', 'at_risk', 'off_track'].includes(body.status)) {
+      throw createError({ statusCode: 400, message: 'Unknown status' })
+    }
+
     const [updated] = await db.update(projects)
       .set({
         name: name || project.name,
+        ...(typeof body.description === 'string' && { description: body.description.slice(0, 20000) }),
+        ...(body.status !== undefined && { status: body.status }),
         ...(body.isPublic !== undefined && { isPublic: body.isPublic }),
         ...(body.publicUntil !== undefined && { publicUntil: body.publicUntil }),
         ...(labelColors !== undefined && { labelColors }),
