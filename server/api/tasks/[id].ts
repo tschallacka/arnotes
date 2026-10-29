@@ -48,6 +48,7 @@ export default defineEventHandler(async (event) => {
     visibility?: Visibility
     assigneeId?: string | null
     dueOn?: string | null
+    startOn?: string | null
     completed?: boolean
     columnId?: string
     parentTaskId?: string | null
@@ -62,6 +63,7 @@ export default defineEventHandler(async (event) => {
     visibility?: Visibility
     assigneeId?: string | null
     dueOn?: string | null
+    startOn?: string | null
     completedAt?: number | null
     columnId?: string
     previousColumnId?: string | null
@@ -83,6 +85,7 @@ export default defineEventHandler(async (event) => {
     patch.assigneeId = body.assigneeId
   }
   if (body.dueOn !== undefined) patch.dueOn = parseDueOn(body.dueOn)
+  if (body.startOn !== undefined) patch.startOn = parseDueOn(body.startOn)
   if (body.completed !== undefined) {
     // Ticking an already finished task again keeps the moment it was finished.
     patch.completedAt = body.completed ? (task.completedAt ?? Date.now()) : null

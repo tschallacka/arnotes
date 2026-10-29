@@ -59,6 +59,7 @@ export interface ProjectTask {
   assigneeId?: string | null
   // A calendar day, `YYYY-MM-DD`.
   dueOn?: string | null
+  startOn?: string | null
   completedAt?: number | null
   // Set on a subtask; those live in the parent's panel, not on the board.
   parentTaskId?: string | null
@@ -718,6 +719,7 @@ export function useProjects() {
     visibility?: Visibility
     assigneeId?: string | null
     dueOn?: string | null
+    startOn?: string | null
     completed?: boolean
   }) {
     const task = await $fetch<ProjectTask>(`/api/tasks/${id}`, { method: 'PUT', headers: realtimeHeaders(), body: patch })

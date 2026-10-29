@@ -14,6 +14,7 @@ interface Task {
   visibility?: Visibility
   assigneeId?: string | null
   dueOn?: string | null
+  startOn?: string | null
   completedAt?: number | null
   createdAt: number
   updatedAt: number
@@ -412,6 +413,11 @@ const assigneeItems = computed(() => [
 function onDueChange(event: Event) {
   const value = (event.target as HTMLInputElement).value
   patchTask({ dueOn: value || null }, 'Could not change the due date')
+}
+
+function onStartChange(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  patchTask({ startOn: value || null }, 'Could not change the start date')
 }
 
 const dueOverdue = computed(() => {
@@ -837,6 +843,36 @@ const menuItems = computed(() => [[
                 v-else
                 class="text-default"
               >{{ assignee ? (assignee.name || assignee.email) : 'No assignee' }}</span>
+            </dd>
+
+            <dt class="text-muted">
+              Start date
+            </dt>
+            <dd class="flex min-w-0 items-center gap-1">
+              <input
+                v-if="!readonly"
+                type="date"
+                min="2000-01-01"
+                max="2999-12-31"
+                :value="shownTask.startOn ?? ''"
+                class="rounded bg-transparent px-0 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary"
+                :class="shownTask.startOn ? 'text-default' : 'text-dimmed'"
+                data-start-input
+                @change="onStartChange"
+              >
+              <span
+                v-else
+                class="text-default"
+              >{{ shownTask.startOn ? format(new Date(dueDayToMs(shownTask.startOn)), 'PP') : 'No start date' }}</span>
+              <UButton
+                v-if="!readonly && shownTask.startOn"
+                icon="i-lucide-x"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                aria-label="Clear start date"
+                @click="patchTask({ startOn: null }, 'Could not change the start date')"
+              />
             </dd>
 
             <dt class="text-muted">

@@ -33,6 +33,7 @@ const projectId = computed(() => route.params.id as string)
 const VIEWS = [
   { key: 'board', label: 'Board', icon: 'i-lucide-kanban' },
   { key: 'list', label: 'List', icon: 'i-lucide-list' },
+  { key: 'timeline', label: 'Timeline', icon: 'i-lucide-gantt-chart' },
   { key: 'calendar', label: 'Calendar', icon: 'i-lucide-calendar-days' },
   { key: 'dashboard', label: 'Dashboard', icon: 'i-lucide-chart-column' },
   { key: 'files', label: 'Files', icon: 'i-lucide-paperclip' }
@@ -449,6 +450,10 @@ useSeoMeta({
         />
         <KanbanProjectListView
           v-else-if="view === 'list'"
+          @open-task="drawerTaskId = $event"
+        />
+        <KanbanProjectTimelineView
+          v-else-if="view === 'timeline'"
           @open-task="drawerTaskId = $event"
         />
         <KanbanProjectCalendarView

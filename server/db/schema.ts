@@ -273,6 +273,9 @@ export const projectTasks = pgTable(
     // A calendar day, `YYYY-MM-DD`, so it means the same date in every timezone.
     // A task without one still shows the first `@date` in its description.
     dueOn: text('due_on'),
+    // When work on it begins, same `YYYY-MM-DD` form; the timeline draws a bar
+    // from here to the due date.
+    startOn: text('start_on'),
     // Finished, independent of the column it sits in: a board's columns are its
     // sections, and ticking a task off does not have to move it.
     completedAt: bigint('completed_at', { mode: 'number' }),
