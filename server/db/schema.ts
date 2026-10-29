@@ -377,6 +377,28 @@ export const taskFieldValues = pgTable(
   ]
 )
 
+// Conversations on a project, kept apart from the work: a message has an
+// optional subject, and a reply is a message whose parent is another. Replies go
+// with the message they answer.
+export const projectMessages = pgTable(
+  'project_messages',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    parentId: text('parent_id').references((): AnyPgColumn => projectMessages.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default(''),
+    body: text('body').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [
+    index('project_messages_project_id_idx').on(table.projectId),
+    index('project_messages_parent_id_idx').on(table.parentId)
+  ]
+)
+
+export type ProjectMessage = typeof projectMessages.$inferSelect
+
 // Time spent, as the people who spent it logged it: whole minutes against a task
 // on a calendar day. The project is kept on the row so a project's timesheet is
 // one query, and it goes with the task or the project.

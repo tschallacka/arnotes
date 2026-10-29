@@ -5,6 +5,7 @@
 import type { ApiKeyScope } from '../db/schema'
 import { MCP_BOARD_TOOLS } from './mcpBoardTools'
 import { MCP_FIELD_TOOLS } from './mcpFieldTools'
+import { MCP_MESSAGE_TOOLS } from './mcpMessageTools'
 import { MCP_STATUS_TOOLS } from './mcpStatusTools'
 import { MCP_TIME_TOOLS } from './mcpTimeTools'
 import type { McpToolDefinition } from './mcpToolKit'
@@ -12,6 +13,7 @@ import type { McpToolDefinition } from './mcpToolKit'
 export const MCP_TOOLS: McpToolDefinition[] = [
   ...MCP_BOARD_TOOLS,
   ...MCP_FIELD_TOOLS,
+  ...MCP_MESSAGE_TOOLS,
   ...MCP_STATUS_TOOLS,
   ...MCP_TIME_TOOLS
 ]

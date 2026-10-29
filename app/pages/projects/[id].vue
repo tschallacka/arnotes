@@ -37,12 +37,14 @@ const VIEWS = [
   { key: 'timeline', label: 'Timeline', icon: 'i-lucide-gantt-chart' },
   { key: 'calendar', label: 'Calendar', icon: 'i-lucide-calendar-days' },
   { key: 'dashboard', label: 'Dashboard', icon: 'i-lucide-chart-column' },
+  { key: 'messages', label: 'Messages', icon: 'i-lucide-message-square' },
   { key: 'time', label: 'Time', icon: 'i-lucide-clock' },
   { key: 'files', label: 'Files', icon: 'i-lucide-paperclip' }
 ] as const
 
-// Time is the team's own bookkeeping, so a customer's contact has no tab for it.
-const visibleViews = computed(() => VIEWS.filter(v => v.key !== 'time' || !isCustomerView.value))
+// Time and messages are the team's own: a customer's contact has no tab for them.
+const STAFF_ONLY_VIEWS: string[] = ['messages', 'time']
+const visibleViews = computed(() => VIEWS.filter(v => !STAFF_ONLY_VIEWS.includes(v.key) || !isCustomerView.value))
 
 const view = computed(() => visibleViews.value.find(v => v.key === route.query.view)?.key ?? 'board')
 
@@ -470,6 +472,10 @@ useSeoMeta({
           @open-task="drawerTaskId = $event"
         />
         <KanbanProjectDashboardView v-else-if="view === 'dashboard'" />
+        <KanbanProjectMessagesView
+          v-else-if="view === 'messages'"
+          :project-id="projectId"
+        />
         <KanbanProjectTimeView
           v-else-if="view === 'time'"
           :project-id="projectId"
