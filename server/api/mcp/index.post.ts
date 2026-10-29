@@ -9,7 +9,7 @@ import { McpToolError } from '../../utils/mcpToolKit'
 import { API_KEY_SCOPES } from '../../db/schema'
 import type { ApiKeyScope } from '../../db/schema'
 import { publish, workspaceTopic } from '../../utils/realtime'
-import type { RealtimeEvent } from '../../utils/realtime'
+import type { ProjectResource, RealtimeEvent } from '../../utils/realtime'
 
 const SERVER_NAME = 'taskmanager'
 const SERVER_VERSION = '0.1.0'
@@ -69,7 +69,7 @@ const ALL_SCOPES: ApiKeyScope[] = [...API_KEY_SCOPES]
  * board on screen refreshes instead of going stale. Board results carry the
  * board they touched; anything else falls back to the coarse signal.
  */
-function announceWrite(tool: { scope: ApiKeyScope }, value: unknown, context: ApiKeyContext) {
+function announceWrite(tool: { scope: ApiKeyScope, resource?: ProjectResource }, value: unknown, context: ApiKeyContext) {
   if (tool.scope !== 'boards:write') return
 
   const topic = workspaceTopic(context.userId, context.teamId)
@@ -86,6 +86,7 @@ function announceWrite(tool: { scope: ApiKeyScope }, value: unknown, context: Ap
     // their own id, which a renamed board's readers need.
     : { type: 'projects', ...(typeof record.id === 'string' && { projectId: record.id }) }
   void publish(topic, event)
+  if (tool.resource && typeof projectId === 'string') void publish(topic, { type: 'resource', projectId, resource: tool.resource })
 }
 
 /** Tool failures are reported inside the result so the model can read and retry them. */

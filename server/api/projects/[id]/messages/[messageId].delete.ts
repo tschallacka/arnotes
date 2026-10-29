@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { db } from '../../../../db'
 import { projectMessages } from '../../../../db/schema'
-import { routeStaffProject } from '../../../../utils/projectResources'
+import { publishResource, routeStaffProject } from '../../../../utils/projectResources'
 
 // Only the author can take a message back, and the replies to it go with it.
 export default defineEventHandler(async (event) => {
@@ -16,5 +16,6 @@ export default defineEventHandler(async (event) => {
     .returning({ id: projectMessages.id })
 
   if (!deleted.length) throw createError({ statusCode: 404, message: 'Message not found' })
+  await publishResource(event, project.id, 'messages')
   return { ok: true }
 })

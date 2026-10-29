@@ -1,4 +1,4 @@
-import { realtimeHeaders } from '~/composables/useRealtime'
+import { realtimeHeaders, useResourceListener } from '~/composables/useRealtime'
 
 interface CollectionOptions {
   /** Where a newly added row goes. Feeds read newest first, conversations oldest first. */
@@ -59,6 +59,11 @@ export function useProjectCollection<T extends { id: string }>(
     items.value = []
     load()
   }, { immediate: true })
+
+  // Someone else changing the collection (a teammate, or an agent) refetches it.
+  useResourceListener(resource, (changed) => {
+    if (changed === toValue(projectId)) load()
+  })
 
   return { items, loading, error, load, add, remove, messageOf: errorMessage }
 }

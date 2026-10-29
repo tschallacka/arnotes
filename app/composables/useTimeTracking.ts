@@ -1,4 +1,4 @@
-import { realtimeHeaders } from '~/composables/useRealtime'
+import { realtimeHeaders, useResourceListener } from '~/composables/useRealtime'
 import { parseDuration } from '#shared/utils/duration'
 import { todayIso } from '~/utils/dueDate'
 import { errorMessage, untypedFetch } from '~/utils/untypedFetch'
@@ -119,6 +119,8 @@ export function useTaskTime(taskId: MaybeRefOrGetter<string | null | undefined>)
   watch(() => toValue(taskId), load, { immediate: true })
   // A timer stopped elsewhere has logged an entry on this task.
   watch(_revision, load)
+  // Time logged by someone else, or by an agent, on this task.
+  useResourceListener('time', () => load())
 
   return { entries, loading, totalMinutes, load, log, remove, errorMessage }
 }

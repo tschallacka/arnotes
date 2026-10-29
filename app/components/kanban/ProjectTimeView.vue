@@ -30,6 +30,9 @@ watch([() => props.projectId, week.from], load, { immediate: true })
 // A timer stopped while this is open has logged something.
 const { revision } = useRunningTimer()
 watch(revision, load)
+useResourceListener('time', (changed) => {
+  if (changed === props.projectId) load()
+})
 
 const total = computed(() => entries.value.reduce((sum, entry) => sum + entry.minutes, 0))
 </script>

@@ -60,6 +60,7 @@ export const MCP_STATUS_TOOLS: McpToolDefinition[] = [
     description: `Post a status update on a board. It sets the board's status to one of ${PROJECT_STATUSES.join(', ')} and records what you wrote beside it, so the team can see how the project got there. Read the history with list_status_updates first and write what changed since the last update.`,
     scope: 'boards:write',
     readOnly: false,
+    resource: 'status-updates',
     inputSchema: {
       type: 'object',
       properties: {

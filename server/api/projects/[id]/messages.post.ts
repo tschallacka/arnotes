@@ -1,7 +1,7 @@
 import { db } from '../../../db'
 import { projectMessages } from '../../../db/schema'
 import { genId } from '../../../utils/projects'
-import { routeStaffProject } from '../../../utils/projectResources'
+import { publishResource, routeStaffProject } from '../../../utils/projectResources'
 import { parseMessageBody, parseMessageTitle, requireReplyTarget } from '../../../utils/messages'
 
 // Posts a message, or a reply to one when `parentId` is given. A reply has no
@@ -23,6 +23,8 @@ export default defineEventHandler(async (event) => {
     body: parseMessageBody(body.body),
     createdAt: Date.now()
   }).returning()
+
+  await publishResource(event, project.id, 'messages')
 
   return {
     id: created!.id,

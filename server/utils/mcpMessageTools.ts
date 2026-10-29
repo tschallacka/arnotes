@@ -64,6 +64,7 @@ export const MCP_MESSAGE_TOOLS: McpToolDefinition[] = [
     description: 'Post a message on a board, or a reply to an existing one with "replyTo". A new message may have a short subject; a reply does not. Read the conversation with list_messages first.',
     scope: 'boards:write',
     readOnly: false,
+    resource: 'messages',
     inputSchema: {
       type: 'object',
       properties: {

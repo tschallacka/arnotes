@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { db } from '../../../../db'
 import { projectStatusUpdates } from '../../../../db/schema'
-import { routeStaffProject } from '../../../../utils/projectResources'
+import { publishResource, routeStaffProject } from '../../../../utils/projectResources'
 
 // Only the person who wrote an update can take it back. The project's status
 // stays as it is: removing a post does not rewind the health it set.
@@ -18,5 +18,6 @@ export default defineEventHandler(async (event) => {
     .returning({ id: projectStatusUpdates.id })
 
   if (!deleted.length) throw createError({ statusCode: 404, message: 'Update not found' })
+  await publishResource(event, project.id, 'status-updates')
   return { ok: true }
 })

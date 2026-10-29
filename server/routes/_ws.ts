@@ -7,7 +7,7 @@
 // A public page connects here too. It has no session, so it asks for the one
 // board it was given a link to, and gets it only while that link is live.
 import { auth } from '../lib/auth'
-import { customerTopic, subscribePeer, unsubscribePeer, workspaceTopic, publicProjectTopic } from '../utils/realtime'
+import { customerTopic, subscribePeer, unsubscribePeer, userTopic, workspaceTopic, publicProjectTopic } from '../utils/realtime'
 import { customerIdsOf } from '../utils/auth-helpers'
 import { findPublicProject } from '../utils/publicAccess'
 import { db } from '../db'
@@ -83,7 +83,8 @@ export default defineWebSocketHandler({
     // The personal workspace is also where a customer contact reads their
     // customers' boards, so it follows those customers too.
     const customerTopics = teamId ? [] : (await customerIdsOf(session.user.id)).map(customerTopic)
-    subscribePeer(peer, [workspaceTopic(session.user.id, teamId), ...customerTopics], clientId)
+    // Their own channel as well, for what is addressed to them and no one else.
+    subscribePeer(peer, [workspaceTopic(session.user.id, teamId), userTopic(session.user.id), ...customerTopics], clientId)
     peer.send(JSON.stringify({ type: 'ready' }))
   },
 

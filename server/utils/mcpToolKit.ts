@@ -1,6 +1,7 @@
 // Shared shape and argument parsing for the board MCP tools in mcpBoardTools.ts.
 import type { ApiKeyScope } from '../db/schema'
 import type { ApiKeyContext } from './api-keys'
+import type { ProjectResource } from './realtime'
 
 export interface McpToolDefinition {
   name: string
@@ -9,6 +10,8 @@ export interface McpToolDefinition {
   scope: ApiKeyScope
   /** Advertised to clients so they can surface which tools change data. */
   readOnly: boolean
+  /** The staff-only collection a write tool changes, so the views showing it update live. */
+  resource?: ProjectResource
   /**
    * Advertised for the writes that cannot be undone, so a client can warn
    * first. Nothing sets it today: every delete an agent can reach goes to a

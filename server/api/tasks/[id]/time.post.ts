@@ -1,4 +1,5 @@
 import { requireStaff, requireTask } from '../../../utils/projects'
+import { publishResource } from '../../../utils/projectResources'
 import { logEntry, parseEntryDay, parseEntryMinutes, parseEntryNote } from '../../../utils/timeTracking'
 
 // Logs time against a task: `minutes` or a typed `duration`, the `day` it was
@@ -17,6 +18,8 @@ export default defineEventHandler(async (event) => {
     day: parseEntryDay(body.day),
     note: parseEntryNote(body.note)
   })
+
+  await publishResource(event, project.id, 'time')
 
   return {
     id: entry.id,

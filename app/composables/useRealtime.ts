@@ -14,17 +14,16 @@ type RealtimeMessage
     | { type: 'pong' }
     | { type: 'projects', projectId?: string }
     | { type: 'board', projectId: string }
+    | { type: 'resource', projectId: string, resource: string }
+    | { type: 'notification' }
 
 // One id per tab, sent on connect and with every mutating request, so the server
 // can leave the tab that caused a change out of the fan-out.
 const _clientId = ref('')
 const _connected = ref(false)
 
-let socket: WebSocket | null = null
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-let heartbeat: ReturnType<typeof setInterval> | null = null
-let attempt = 0
-let stopped = false
+// The worker that holds the socket.
+let worker: Worker | null = null
 
 // Changes arrive in bursts — a drag writes a task, a board and a project row —
 // so refetches are coalesced per slice.
@@ -76,6 +75,36 @@ async function flush() {
   await Promise.allSettled(work)
 }
 
+// Views that show a staff-only collection (messages, time, status updates) ask
+// to hear when it changes, and refetch it themselves; the socket carries no data.
+type ResourceListener = (projectId: string) => void
+const resourceListeners = new Map<string, Set<ResourceListener>>()
+const notificationListeners = new Set<() => void>()
+
+/** Calls back when the named collection changes on any project; returns the way to stop listening. */
+export function onResourceChange(resource: string, listener: ResourceListener): () => void {
+  const listeners = resourceListeners.get(resource) ?? new Set<ResourceListener>()
+  listeners.add(listener)
+  resourceListeners.set(resource, listeners)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+/** Calls back when something lands in this person's inbox. */
+export function onNotification(listener: () => void): () => void {
+  notificationListeners.add(listener)
+  return () => {
+    notificationListeners.delete(listener)
+  }
+}
+
+/** `onResourceChange` for a component or composable: it stops listening when its scope ends. */
+export function useResourceListener(resource: string, listener: ResourceListener) {
+  const stop = onResourceChange(resource, listener)
+  if (getCurrentScope()) onScopeDispose(stop)
+}
+
 function handle(message: RealtimeMessage) {
   switch (message.type) {
     case 'projects':
@@ -84,6 +113,12 @@ function handle(message: RealtimeMessage) {
     case 'board':
       pending.boards.add(message.projectId)
       break
+    case 'resource':
+      for (const listener of resourceListeners.get(message.resource) ?? []) listener(message.projectId)
+      return
+    case 'notification':
+      for (const listener of notificationListeners) listener()
+      return
     default:
       // 'ready' and 'pong' are liveness only.
       return
@@ -92,70 +127,50 @@ function handle(message: RealtimeMessage) {
 }
 
 function connect() {
-  if (!import.meta.client || stopped || socket) return
+  if (!import.meta.client || worker) return
 
   const url = new URL('/_ws', window.location.origin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.searchParams.set('client', clientId())
 
+  // The socket, its heartbeat and its reconnecting live in a worker, off the
+  // main thread. A browser without workers has no live updates, and the app
+  // reads what it fetched, as it always could.
   try {
-    socket = new WebSocket(url)
+    worker = new Worker(new URL('../workers/realtime.worker.ts', import.meta.url), { type: 'module' })
   } catch {
-    scheduleReconnect()
+    worker = null
     return
   }
 
-  socket.onopen = () => {
-    attempt = 0
-    _connected.value = true
-    // Idle proxies drop a silent socket; a ping every 30s keeps it open.
-    heartbeat = setInterval(() => socket?.send('ping'), 30_000)
-  }
-
-  socket.onmessage = (raw) => {
-    try {
-      handle(JSON.parse(raw.data as string) as RealtimeMessage)
-    } catch {
-      // Not our message shape; nothing to do.
+  worker.onmessage = (event: MessageEvent<{ type: string, connected?: boolean, data?: string }>) => {
+    const message = event.data
+    if (message.type === 'status') {
+      _connected.value = !!message.connected
+    } else if (message.type === 'gone') {
+      // The session is over; a worker that went on trying would only fail again.
+      closeWorker()
+    } else if (message.type === 'event' && typeof message.data === 'string') {
+      try {
+        handle(JSON.parse(message.data) as RealtimeMessage)
+      } catch {
+        // Not our message shape; nothing to do.
+      }
     }
   }
 
-  socket.onclose = (closeEvent) => {
-    teardown()
-    // 4401 means the session is gone: reconnecting would only fail again.
-    if (closeEvent.code === 4401) {
-      stopped = true
-      return
-    }
-    scheduleReconnect()
-  }
-
-  socket.onerror = () => socket?.close()
+  worker.postMessage({ type: 'start', url: url.toString() })
 }
 
-function teardown() {
+function closeWorker() {
+  worker?.postMessage({ type: 'stop' })
+  worker?.terminate()
+  worker = null
   _connected.value = false
-  if (heartbeat) {
-    clearInterval(heartbeat)
-    heartbeat = null
-  }
-  socket = null
-}
-
-function scheduleReconnect() {
-  if (stopped || reconnectTimer) return
-  // 1s, 2s, 4s … capped at 30s, so a restarted server is picked up quickly
-  // without hammering one that is down.
-  const delay = Math.min(1000 * 2 ** attempt++, 30_000)
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null
-    connect()
-  }, delay)
 }
 
 export function useRealtime() {
   function start() {
-    stopped = false
     connect()
 
     // A tab that slept through a change comes back with stale data, so waking up
@@ -165,23 +180,14 @@ export function useRealtime() {
 
   function onVisible() {
     if (document.visibilityState !== 'visible') return
-    if (!socket) {
-      attempt = 0
-      connect()
-    }
+    worker?.postMessage({ type: 'wake' })
     pending.projects = true
     scheduleFlush()
   }
 
   function stop() {
-    stopped = true
     document.removeEventListener('visibilitychange', onVisible)
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-    socket?.close()
-    teardown()
+    closeWorker()
   }
 
   return { connected: _connected, clientId: _clientId, start, stop }

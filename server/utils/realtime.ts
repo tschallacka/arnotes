@@ -28,6 +28,19 @@ import { getUserActiveTeamId } from './auth-helpers'
 export type RealtimeEvent
   = | { type: 'projects', projectId?: string }
     | { type: 'board', projectId: string }
+    // A staff-only collection on a board changed: which one, so only the views
+    // showing it refetch.
+    | { type: 'resource', projectId: string, resource: ProjectResource }
+    // Something arrived in the signed-in person's inbox.
+    | { type: 'notification' }
+
+/** The collections hung off a project that are the team's own, named as their endpoints are. */
+export type ProjectResource = 'messages' | 'status-updates' | 'time'
+
+/** One person's own channel: every tab they have open listens on it. */
+export function userTopic(userId: string): string {
+  return `me:${userId}`
+}
 
 /**
  * Events are addressed to a workspace, never to a user: everyone looking at a
@@ -56,7 +69,7 @@ export function publicProjectTopic(projectId: string): string {
 }
 
 /** The public topic a workspace event also belongs on, if it names one. */
-function publicTopicFor(event: RealtimeEvent): string | null {
+function publicTopicFor(event: { projectId?: string }): string | null {
   return event.projectId ? publicProjectTopic(event.projectId) : null
 }
 
@@ -143,12 +156,18 @@ export async function publish(topic: string, event: RealtimeEvent, originClientI
   if (!subscriptions.size) return
   const topics = new Set([topic])
 
-  if (event.projectId) {
-    for (const extra of await projectTopics(event.projectId).catch(() => [])) topics.add(extra)
-  }
+  // Only a board's own data reaches the people around it: a customer's
+  // contacts, and whoever holds the shared link. A staff-only collection or a
+  // personal notification goes to the one topic it was addressed to and nowhere
+  // else, so a contact is not even told that the team has been talking.
+  if (event.type === 'projects' || event.type === 'board') {
+    if (event.projectId) {
+      for (const extra of await projectTopics(event.projectId).catch(() => [])) topics.add(extra)
+    }
 
-  const publicTopic = publicTopicFor(event)
-  if (publicTopic) topics.add(publicTopic)
+    const publicTopic = publicTopicFor(event)
+    if (publicTopic) topics.add(publicTopic)
+  }
 
   fanout(topics, JSON.stringify(event), originClientId)
 }
@@ -164,4 +183,13 @@ export async function publishFromEvent(event: H3Event, realtimeEvent: RealtimeEv
   if (!session) return
   const topic = workspaceTopic(session.user.id, await getUserActiveTeamId(event))
   await publish(topic, realtimeEvent, getRequestHeader(event, 'x-client-id') ?? null)
+}
+
+/**
+ * Tells one person something happened that is theirs alone, in every tab and
+ * window they have open: a notification, which is addressed to them and to no
+ * workspace.
+ */
+export async function publishToUser(userId: string, event: RealtimeEvent) {
+  await publish(userTopic(userId), event)
 }

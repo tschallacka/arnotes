@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../../../db'
 import { projects, projectStatusUpdates } from '../../../db/schema'
 import { genId } from '../../../utils/projects'
-import { routeStaffProject, touchProject } from '../../../utils/projectResources'
+import { publishResource, routeStaffProject, touchProject } from '../../../utils/projectResources'
 import { parseProjectStatus } from '../../../utils/taskFields'
 
 const MAX_BODY = 5000
@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
 
   await db.update(projects).set({ status }).where(eq(projects.id, project.id))
   await touchProject(event, project.id)
+  await publishResource(event, project.id, 'status-updates')
 
   return {
     id: created!.id,

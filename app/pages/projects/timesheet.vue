@@ -34,6 +34,8 @@ async function load() {
 watch(week.from, load, { immediate: true })
 // A timer stopped from the sidebar has logged an entry.
 watch(revision, load)
+// Time logged on any project, from here or by an agent.
+useResourceListener('time', () => load())
 
 const total = computed(() => entries.value.reduce((sum, entry) => sum + entry.minutes, 0))
 

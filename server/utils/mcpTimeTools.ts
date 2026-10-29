@@ -13,6 +13,7 @@ export const MCP_TIME_TOOLS: McpToolDefinition[] = [
     description: 'Log time spent on a task, as the key\'s owner. Give "duration" as people write it (1h 30m, 1:30, 45m; a bare number counts as hours), the "day" it was worked (YYYY-MM-DD, default today) and an optional note.',
     scope: 'boards:write',
     readOnly: false,
+    resource: 'time',
     inputSchema: {
       type: 'object',
       properties: {

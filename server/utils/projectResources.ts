@@ -8,6 +8,7 @@ import { db } from '../db'
 import { projects, user } from '../db/schema'
 import { requireProject, requireStaff } from './projects'
 import { publishFromEvent } from './realtime'
+import type { ProjectResource } from './realtime'
 
 /** The project named by the route's `id`, for a collection anyone on the project may read. */
 export function routeProject(event: H3Event) {
@@ -36,4 +37,13 @@ export function authorOf(row: { authorId: string | null, authorName: string | nu
 export async function touchProject(event: H3Event, projectId: string, kind: 'projects' | 'board' = 'projects') {
   await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, projectId))
   await publishFromEvent(event, kind === 'board' ? { type: 'board', projectId } : { type: 'projects', projectId })
+}
+
+/**
+ * Tells everyone on the team who has a project open that one of its staff-only
+ * collections changed, so the view showing it refetches. Customers' contacts and
+ * shared-link readers are not told: the event only reaches the workspace.
+ */
+export async function publishResource(event: H3Event, projectId: string, resource: ProjectResource) {
+  await publishFromEvent(event, { type: 'resource', projectId, resource })
 }
