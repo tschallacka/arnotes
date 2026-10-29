@@ -67,6 +67,13 @@ async function commitRename(project: { id: string, name: string }) {
   if (id && name && name !== project.name) await renameProject(id, name)
 }
 
+const WORKSPACE_LINKS = [
+  { to: '/projects/home', label: 'Home', icon: 'i-lucide-house' },
+  { to: '/projects/my-tasks', label: 'My tasks', icon: 'i-lucide-circle-check' },
+  { to: '/projects/browse', label: 'Browse projects', icon: 'i-lucide-folder-search' },
+  { to: '/projects/profile', label: 'Profile', icon: 'i-lucide-user-round' }
+]
+
 const deleteTarget = ref<{ id: string, name: string } | null>(null)
 
 async function confirmDelete() {
@@ -93,6 +100,25 @@ function menuItems(project: { id: string, name: string }) {
 
 <template>
   <div class="flex flex-col gap-0.5">
+    <nav
+      class="mb-2 flex flex-col gap-0.5 border-b border-default pb-2"
+      aria-label="Workspace"
+    >
+      <NuxtLink
+        v-for="link in WORKSPACE_LINKS"
+        :key="link.to"
+        :to="link.to"
+        class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-default"
+        active-class="bg-elevated font-medium text-default"
+      >
+        <UIcon
+          :name="link.icon"
+          class="size-4"
+        />
+        {{ link.label }}
+      </NuxtLink>
+    </nav>
+
     <div class="flex items-center justify-between px-2 pb-1">
       <span class="text-xs font-semibold uppercase tracking-wider text-dimmed">Projects</span>
       <UButton

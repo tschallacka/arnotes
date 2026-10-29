@@ -33,6 +33,9 @@ export default defineEventHandler(async (event) => {
       description: projectTasks.description,
       tags: projectTasks.tags,
       visibility: projectTasks.visibility,
+      assigneeId: projectTasks.assigneeId,
+      dueOn: projectTasks.dueOn,
+      completedAt: projectTasks.completedAt,
       updatedAt: projectTasks.updatedAt
     })
     .from(projectTasks)

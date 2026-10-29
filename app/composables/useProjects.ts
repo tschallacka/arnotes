@@ -105,6 +105,9 @@ export interface TaskSearchRow {
   title: string
   description: string
   tags: string[]
+  assigneeId?: string | null
+  dueOn?: string | null
+  completedAt?: number | null
   updatedAt: number
 }
 
@@ -326,6 +329,9 @@ function upsertSearchRow(task: ProjectTask) {
     title: task.title,
     description: task.description,
     tags: task.tags ?? [],
+    assigneeId: task.assigneeId ?? null,
+    dueOn: task.dueOn ?? null,
+    completedAt: task.completedAt ?? null,
     updatedAt: task.updatedAt
   }
   const idx = _allTasks.value.findIndex(t => t.id === row.id)
