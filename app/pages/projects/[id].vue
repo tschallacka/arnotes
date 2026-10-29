@@ -30,6 +30,18 @@ const {
 
 const projectId = computed(() => route.params.id as string)
 
+const VIEWS = [
+  { key: 'board', label: 'Board', icon: 'i-lucide-kanban' },
+  { key: 'list', label: 'List', icon: 'i-lucide-list' },
+  { key: 'calendar', label: 'Calendar', icon: 'i-lucide-calendar-days' }
+] as const
+
+const view = computed(() => VIEWS.find(v => v.key === route.query.view)?.key ?? 'board')
+
+function setView(key: string) {
+  navigateTo({ path: route.path, query: { ...route.query, view: key === 'board' ? undefined : key } }, { replace: true })
+}
+
 const loadFailed = ref(false)
 
 watch(projectId, async (id) => {
@@ -333,6 +345,31 @@ useSeoMeta({
       </div>
     </header>
 
+    <!-- View tabs -->
+    <nav
+      class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-default px-4 lg:px-6"
+      aria-label="Project views"
+    >
+      <button
+        v-for="v in VIEWS"
+        :key="v.key"
+        class="relative flex shrink-0 items-center gap-1.5 px-2.5 py-2 text-sm transition-colors"
+        :class="view === v.key ? 'font-medium text-default' : 'text-muted hover:text-default'"
+        :aria-current="view === v.key ? 'page' : undefined"
+        @click="setView(v.key)"
+      >
+        <UIcon
+          :name="v.icon"
+          class="size-4"
+        />
+        {{ v.label }}
+        <span
+          class="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary transition-opacity duration-200"
+          :class="view === v.key ? 'opacity-100' : 'opacity-0'"
+        />
+      </button>
+    </nav>
+
     <!-- Trash summary. The board itself draws the deleted columns and cards in
          place; this says what is being looked at and how long it has left. -->
     <div
@@ -402,11 +439,21 @@ useSeoMeta({
           @click="navigateTo('/projects')"
         />
       </div>
-      <KanbanBoard
-        v-else-if="projectId"
-        :project-id="projectId"
-        @open-task="drawerTaskId = $event"
-      />
+      <template v-else-if="projectId">
+        <KanbanBoard
+          v-if="view === 'board'"
+          :project-id="projectId"
+          @open-task="drawerTaskId = $event"
+        />
+        <KanbanProjectListView
+          v-else-if="view === 'list'"
+          @open-task="drawerTaskId = $event"
+        />
+        <KanbanProjectCalendarView
+          v-else
+          @open-task="drawerTaskId = $event"
+        />
+      </template>
     </div>
 
     <!-- Task panel -->
