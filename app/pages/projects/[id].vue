@@ -33,7 +33,9 @@ const projectId = computed(() => route.params.id as string)
 const VIEWS = [
   { key: 'board', label: 'Board', icon: 'i-lucide-kanban' },
   { key: 'list', label: 'List', icon: 'i-lucide-list' },
-  { key: 'calendar', label: 'Calendar', icon: 'i-lucide-calendar-days' }
+  { key: 'calendar', label: 'Calendar', icon: 'i-lucide-calendar-days' },
+  { key: 'dashboard', label: 'Dashboard', icon: 'i-lucide-chart-column' },
+  { key: 'files', label: 'Files', icon: 'i-lucide-paperclip' }
 ] as const
 
 const view = computed(() => VIEWS.find(v => v.key === route.query.view)?.key ?? 'board')
@@ -450,6 +452,11 @@ useSeoMeta({
           @open-task="drawerTaskId = $event"
         />
         <KanbanProjectCalendarView
+          v-else-if="view === 'calendar'"
+          @open-task="drawerTaskId = $event"
+        />
+        <KanbanProjectDashboardView v-else-if="view === 'dashboard'" />
+        <KanbanProjectFilesView
           v-else
           @open-task="drawerTaskId = $event"
         />
