@@ -34,6 +34,15 @@ const overdueCount = computed(() => mine.value.filter(overdue).length)
 function open(task: { id: string, projectId: string }) {
   navigateTo(`/projects/${task.projectId}?task=${task.id}`)
 }
+
+// The same tasks drawn as a list or as a board, chosen in the address like the
+// project views are.
+const route = useRoute()
+const view = computed(() => route.query.view === 'board' ? 'board' : 'list')
+
+function setView(next: 'list' | 'board') {
+  navigateTo({ query: next === 'board' ? { view: 'board' } : {} }, { replace: true })
+}
 </script>
 
 <template>
@@ -51,9 +60,37 @@ function open(task: { id: string, projectId: string }) {
       <h1 class="text-base font-semibold text-default">
         My tasks
       </h1>
+      <div class="ml-auto flex items-center gap-0.5 rounded-lg bg-elevated p-0.5">
+        <button
+          v-for="option in (['list', 'board'] as const)"
+          :key="option"
+          class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs capitalize transition-colors"
+          :class="view === option ? 'bg-default font-medium text-default shadow-sm' : 'text-muted hover:text-default'"
+          :data-mytasks-view="option"
+          @click="setView(option)"
+        >
+          <UIcon
+            :name="option === 'list' ? 'i-lucide-list' : 'i-lucide-layout-dashboard'"
+            class="size-3.5"
+          />
+          {{ option }}
+        </button>
+      </div>
     </header>
 
-    <nav class="flex shrink-0 gap-1 border-b border-default px-4 lg:px-6">
+    <MyTasksBoard
+      v-if="view === 'board'"
+      class="min-h-0 flex-1"
+      :tasks="mine"
+      @open="open"
+      @complete="updateTask($event.id, { completed: true })"
+      @schedule="(id, dueOn) => updateTask(id, { dueOn })"
+    />
+
+    <nav
+      v-if="view === 'list'"
+      class="flex shrink-0 gap-1 border-b border-default px-4 lg:px-6"
+    >
       <button
         v-for="name in TABS"
         :key="name"
@@ -69,7 +106,10 @@ function open(task: { id: string, projectId: string }) {
       </button>
     </nav>
 
-    <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6">
+    <div
+      v-if="view === 'list'"
+      class="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6"
+    >
       <p
         v-if="ready && !shown.length"
         class="py-12 text-center text-sm text-muted"
