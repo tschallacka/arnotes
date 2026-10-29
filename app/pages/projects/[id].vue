@@ -37,10 +37,14 @@ const VIEWS = [
   { key: 'timeline', label: 'Timeline', icon: 'i-lucide-gantt-chart' },
   { key: 'calendar', label: 'Calendar', icon: 'i-lucide-calendar-days' },
   { key: 'dashboard', label: 'Dashboard', icon: 'i-lucide-chart-column' },
+  { key: 'time', label: 'Time', icon: 'i-lucide-clock' },
   { key: 'files', label: 'Files', icon: 'i-lucide-paperclip' }
 ] as const
 
-const view = computed(() => VIEWS.find(v => v.key === route.query.view)?.key ?? 'board')
+// Time is the team's own bookkeeping, so a customer's contact has no tab for it.
+const visibleViews = computed(() => VIEWS.filter(v => v.key !== 'time' || !isCustomerView.value))
+
+const view = computed(() => visibleViews.value.find(v => v.key === route.query.view)?.key ?? 'board')
 
 function setView(key: string) {
   navigateTo({ path: route.path, query: { ...route.query, view: key === 'board' ? undefined : key } }, { replace: true })
@@ -355,7 +359,7 @@ useSeoMeta({
       aria-label="Project views"
     >
       <button
-        v-for="v in VIEWS"
+        v-for="v in visibleViews"
         :key="v.key"
         class="relative flex shrink-0 items-center gap-1.5 px-2.5 py-2 text-sm transition-colors"
         :class="view === v.key ? 'font-medium text-default' : 'text-muted hover:text-default'"
@@ -466,6 +470,10 @@ useSeoMeta({
           @open-task="drawerTaskId = $event"
         />
         <KanbanProjectDashboardView v-else-if="view === 'dashboard'" />
+        <KanbanProjectTimeView
+          v-else-if="view === 'time'"
+          :project-id="projectId"
+        />
         <KanbanProjectFilesView
           v-else
           @open-task="drawerTaskId = $event"
