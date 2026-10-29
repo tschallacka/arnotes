@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isOverdueDay } from '~/utils/dueDate'
+import { relativeTime } from '~/composables/useRelativeTime'
 
 const props = defineProps<{ projectId: string }>()
 
@@ -42,6 +43,41 @@ function setStatus(key: (typeof STATUSES)[number]['key']) {
   return updateProjectDetails(props.projectId, { status: next })
 }
 
+interface StatusUpdate {
+  id: string
+  status: 'on_track' | 'at_risk' | 'off_track'
+  body: string
+  createdAt: number
+  author: { id: string, name: string, image: string | null }
+}
+
+const { syncProjects } = useProjects()
+const { session } = useAuth()
+const me = computed(() => session.value?.user)
+
+const updates = useProjectCollection<StatusUpdate>(() => props.projectId, 'status-updates')
+const updateDraft = ref('')
+const posting = ref(false)
+const postError = ref('')
+
+const statusMeta = (key: string) => STATUSES.find(status => status.key === key)
+
+async function postUpdate() {
+  const status = activeProject.value?.status
+  if (!status || posting.value) return
+  posting.value = true
+  postError.value = ''
+  try {
+    await updates.add({ status, body: updateDraft.value })
+    updateDraft.value = ''
+    await syncProjects()
+  } catch (e) {
+    postError.value = updates.messageOf(e, 'Could not post the update')
+  } finally {
+    posting.value = false
+  }
+}
+
 const counts = computed(() => {
   const tasks = (board.value?.tasks ?? []).filter(task => !isTrashed(task))
   return {
@@ -74,6 +110,101 @@ const counts = computed(() => {
         >
           Saved
         </p>
+
+        <h2 class="mt-6 text-lg font-semibold text-default">
+          Status updates
+        </h2>
+        <div class="mt-3 rounded-xl border border-default bg-default p-3">
+          <textarea
+            v-model="updateDraft"
+            rows="3"
+            placeholder="How is the project going? Say what changed since the last update."
+            class="w-full resize-y bg-transparent text-sm leading-relaxed text-default outline-none placeholder:text-dimmed"
+            data-update-input
+          />
+          <div class="mt-2 flex items-center justify-between gap-3">
+            <p class="text-xs text-muted">
+              <template v-if="activeProject?.status">
+                Posts as
+                <span class="font-medium text-default">{{ statusMeta(activeProject.status)?.label }}</span>
+              </template>
+              <template v-else>
+                Pick a status on the right first
+              </template>
+            </p>
+            <UButton
+              label="Post update"
+              size="sm"
+              :disabled="!activeProject?.status"
+              :loading="posting"
+              data-update-post
+              @click="postUpdate"
+            />
+          </div>
+          <p
+            v-if="postError"
+            class="mt-2 text-xs text-error"
+          >
+            {{ postError }}
+          </p>
+        </div>
+
+        <ul
+          class="mt-4 space-y-3"
+          data-update-feed
+        >
+          <li
+            v-for="update in updates.items.value"
+            :key="update.id"
+            class="rounded-xl border border-default bg-default p-3"
+            data-status-update
+          >
+            <div class="flex items-center gap-2">
+              <UAvatar
+                :src="update.author.image ?? undefined"
+                :alt="update.author.name"
+                size="2xs"
+              />
+              <span class="text-sm font-medium text-default">{{ update.author.name }}</span>
+              <span
+                class="flex items-center gap-1.5 rounded-full bg-elevated px-2 py-0.5 text-xs text-default"
+                :data-update-status="update.status"
+              >
+                <span
+                  class="size-2 rounded-full"
+                  :class="statusMeta(update.status)?.dot"
+                />
+                {{ statusMeta(update.status)?.label }}
+              </span>
+              <span class="ml-auto text-xs text-dimmed">{{ relativeTime(update.createdAt) }}</span>
+              <button
+                v-if="update.author.id === me?.id"
+                class="text-dimmed transition-colors hover:text-error"
+                aria-label="Delete update"
+                title="Delete update"
+                data-update-delete
+                @click="updates.remove(update.id)"
+              >
+                <UIcon
+                  name="i-lucide-trash-2"
+                  class="size-3.5"
+                />
+              </button>
+            </div>
+            <p
+              v-if="update.body"
+              class="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-default"
+            >
+              {{ update.body }}
+            </p>
+          </li>
+          <li
+            v-if="!updates.items.value.length && !updates.loading.value"
+            class="text-sm text-muted"
+          >
+            No updates yet. The first one starts the project's history.
+          </li>
+        </ul>
       </div>
 
       <aside class="space-y-6">

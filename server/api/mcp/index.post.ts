@@ -4,7 +4,7 @@
 // connect, and every request is authorised on its own.
 import { authenticateApiKey, hasScope } from '../../utils/api-keys'
 import type { ApiKeyContext } from '../../utils/api-keys'
-import { toolsForScopes } from '../../utils/mcpBoardTools'
+import { toolsForScopes } from '../../utils/mcpRegistry'
 import { McpToolError } from '../../utils/mcpToolKit'
 import { API_KEY_SCOPES } from '../../db/schema'
 import type { ApiKeyScope } from '../../db/schema'

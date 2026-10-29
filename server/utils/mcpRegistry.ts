@@ -1,0 +1,17 @@
+// Every tool the MCP server answers with, gathered from the modules that define
+// them. A feature that comes with agent tools adds its module to this list and
+// nothing else: the server's `tools/list`, its scope checks and the setup guide's
+// catalogue all read from here.
+import type { ApiKeyScope } from '../db/schema'
+import { MCP_BOARD_TOOLS } from './mcpBoardTools'
+import { MCP_STATUS_TOOLS } from './mcpStatusTools'
+import type { McpToolDefinition } from './mcpToolKit'
+
+export const MCP_TOOLS: McpToolDefinition[] = [
+  ...MCP_BOARD_TOOLS,
+  ...MCP_STATUS_TOOLS
+]
+
+export function toolsForScopes(scopes: ApiKeyScope[]): McpToolDefinition[] {
+  return MCP_TOOLS.filter(tool => scopes.includes(tool.scope))
+}

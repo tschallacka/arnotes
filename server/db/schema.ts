@@ -256,6 +256,24 @@ export const projectColumns = pgTable(
 
 export type ProjectColumn = typeof projectColumns.$inferSelect
 
+// The project's health over time. `projects.status` is only where it stands now;
+// each post here records the status at the moment someone said it, with the
+// words that went with it, so the Overview can show how a project got there.
+export const projectStatusUpdates = pgTable(
+  'project_status_updates',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    status: text('status').notNull(),
+    body: text('body').notNull().default(''),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [index('project_status_updates_project_id_idx').on(table.projectId)]
+)
+
+export type ProjectStatusUpdate = typeof projectStatusUpdates.$inferSelect
+
 export const projectTasks = pgTable(
   'project_tasks',
   {

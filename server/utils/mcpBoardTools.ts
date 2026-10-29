@@ -6,7 +6,7 @@
 import { and, asc, count, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { projects, projectColumns, projectTasks, taskComments, user, apiKeys } from '../db/schema'
-import type { ApiKeyScope, Project, ProjectColumn, ProjectTask } from '../db/schema'
+import type { Project, ProjectColumn, ProjectTask } from '../db/schema'
 import type { ApiKeyContext } from './api-keys'
 import { projectAccessFilter } from './auth-helpers'
 import { htmlToMarkdown, htmlToPlainText, markdownToHtml } from './markdown'
@@ -55,7 +55,7 @@ async function accessibleBoards(context: ApiKeyContext): Promise<Project[]> {
  * Boards are addressable by id, by name, or by a link copied out of the app, so
  * an agent can use whichever the user handed it.
  */
-async function findBoard(reference: string, context: ApiKeyContext): Promise<Project> {
+export async function findBoard(reference: string, context: ApiKeyContext): Promise<Project> {
   const ref = idFromReference(reference)
   const boards = await accessibleBoards(context)
   const match = boards.find(board => board.id === ref)
@@ -117,14 +117,14 @@ async function findTask(
   return { task, board }
 }
 
-function touchBoard(boardId: string) {
+export function touchBoard(boardId: string) {
   return db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, boardId))
 }
 
 // ─── people and schedule ──────────────────────────────────────────────────────
 
 /** Who can be named on a board's tasks, by id, so cards can say who has them. */
-async function peopleNames(board: Project): Promise<Map<string, string>> {
+export async function peopleNames(board: Project): Promise<Map<string, string>> {
   return new Map((await projectPeople(board)).map(person => [person.id, person.name || person.email]))
 }
 
@@ -1164,7 +1164,3 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
     }
   }
 ]
-
-export function toolsForScopes(scopes: ApiKeyScope[]): McpToolDefinition[] {
-  return MCP_BOARD_TOOLS.filter(tool => scopes.includes(tool.scope))
-}
