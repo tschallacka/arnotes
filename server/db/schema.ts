@@ -377,6 +377,45 @@ export const taskFieldValues = pgTable(
   ]
 )
 
+// What someone has been told: one row per person per event, so a notification
+// can be read, marked read and listed without touching what it was about. It
+// names the project (and task) it points at and carries the words as they were
+// when it was sent; whether the recipient may still open it is decided when they
+// do. `emailedAt` is when a copy went out by mail, if it did.
+export const NOTIFICATION_TYPES = ['assigned', 'comment', 'message', 'reply'] as const
+export type NotificationType = typeof NOTIFICATION_TYPES[number]
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    type: text('type').$type<NotificationType>().notNull(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').references(() => projectTasks.id, { onDelete: 'cascade' }),
+    actorId: text('actor_id').references(() => user.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    body: text('body').notNull().default(''),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    readAt: bigint('read_at', { mode: 'number' }),
+    emailedAt: bigint('emailed_at', { mode: 'number' })
+  },
+  table => [
+    index('notifications_user_created_idx').on(table.userId, table.createdAt),
+    index('notifications_user_read_idx').on(table.userId, table.readAt)
+  ]
+)
+
+export type Notification = typeof notifications.$inferSelect
+
+// How each person wants to hear: the inbox always, and by mail or as a desktop
+// notification only if they asked.
+export const notificationPreferences = pgTable('notification_preferences', {
+  userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
+  email: boolean('email').notNull().default(false),
+  browser: boolean('browser').notNull().default(false)
+})
+
 // Conversations on a project, kept apart from the work: a message has an
 // optional subject, and a reply is a message whose parent is another. Replies go
 // with the message they answer.

@@ -5,6 +5,7 @@ import { taskCountLabel } from '#shared/utils/board'
 
 const { ready, projects, allTasks, deleteProject, renameProject } = useProjects()
 const route = useRoute()
+const { unread: inboxUnread } = useNotifications()
 
 const activeId = computed(() => (route.params.id as string | undefined) ?? null)
 
@@ -69,6 +70,7 @@ async function commitRename(project: { id: string, name: string }) {
 
 const WORKSPACE_LINKS = [
   { to: '/projects/home', label: 'Home', icon: 'i-lucide-house' },
+  { to: '/projects/inbox', label: 'Inbox', icon: 'i-lucide-inbox' },
   { to: '/projects/my-tasks', label: 'My tasks', icon: 'i-lucide-circle-check' },
   { to: '/projects/browse', label: 'Browse projects', icon: 'i-lucide-folder-search' },
   { to: '/projects/timesheet', label: 'Timesheet', icon: 'i-lucide-clock' },
@@ -117,6 +119,11 @@ function menuItems(project: { id: string, name: string }) {
           class="size-4"
         />
         {{ link.label }}
+        <span
+          v-if="link.to === '/projects/inbox' && inboxUnread"
+          class="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[0.625rem] font-semibold leading-none tabular-nums text-inverted"
+          data-inbox-badge
+        >{{ inboxUnread > 99 ? '99+' : inboxUnread }}</span>
       </NuxtLink>
     </nav>
 

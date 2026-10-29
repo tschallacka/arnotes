@@ -8,4 +8,6 @@ export default defineNuxtPlugin(async () => {
   if (!session) return
 
   useRealtime().start()
+  // The inbox is read once and then kept current by the same socket.
+  useNotifications().init()
 })

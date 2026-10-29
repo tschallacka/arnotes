@@ -3,6 +3,7 @@ import { projectMessages } from '../../../db/schema'
 import { genId } from '../../../utils/projects'
 import { publishResource, routeStaffProject } from '../../../utils/projectResources'
 import { parseMessageBody, parseMessageTitle, requireReplyTarget } from '../../../utils/messages'
+import { notifyMessage } from '../../../utils/notifyEvents'
 
 // Posts a message, or a reply to one when `parentId` is given. A reply has no
 // subject of its own.
@@ -24,6 +25,7 @@ export default defineEventHandler(async (event) => {
     createdAt: Date.now()
   }).returning()
 
+  await notifyMessage(project, created!, user.id)
   await publishResource(event, project.id, 'messages')
 
   return {

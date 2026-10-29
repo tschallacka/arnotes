@@ -7,6 +7,7 @@ import { findBoard } from './mcpBoardTools'
 import { McpToolError, asToolError, asToolErrorAsync, newId, optionalLimit, optionalString, requireString } from './mcpToolKit'
 import type { McpToolDefinition } from './mcpToolKit'
 import { parseMessageBody, parseMessageTitle, requireReplyTarget } from './messages'
+import { notifyMessage } from './notifyEvents'
 
 export const MCP_MESSAGE_TOOLS: McpToolDefinition[] = [
   {
@@ -92,6 +93,7 @@ export const MCP_MESSAGE_TOOLS: McpToolDefinition[] = [
         body,
         createdAt: Date.now()
       }).returning()
+      await notifyMessage(board, created!, context.userId)
 
       return {
         posted: true,

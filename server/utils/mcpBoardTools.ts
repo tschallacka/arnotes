@@ -16,6 +16,7 @@ import { McpToolError, asToolError, asToolErrorAsync, excerpt, idFromReference, 
 import type { McpToolDefinition } from './mcpToolKit'
 import { MAX_PROJECT_DESCRIPTION, PROJECT_STATUSES, parseDueOn, parseProjectStatus } from './taskFields'
 import { projectPeople } from './people'
+import { notifyAssigned } from './notifyEvents'
 import { checkFieldValues, describeFieldValues, listFields, loadFieldValues, setFieldValues } from './customFields'
 
 const MAX_LABELS = 10
@@ -1025,6 +1026,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         updatedAt: now
       }).returning()
 
+      if (task!.assigneeId) await notifyAssigned(board, task!, context.userId, task!.assigneeId)
       const storedValues = fieldMap ? await asToolErrorAsync(() => setFieldValues(task!.id, fieldDefs, fieldMap)) : undefined
       await touchBoard(board.id)
       // The caller wrote the description; echoing it back with an empty update
@@ -1080,6 +1082,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         .where(eq(projectTasks.id, task.id))
         .returning()
 
+      if (fields.assigneeId && fields.assigneeId !== task.assigneeId) await notifyAssigned(board, updated!, context.userId, fields.assigneeId)
       if (fieldMap) await asToolErrorAsync(() => setFieldValues(task.id, fieldDefs, fieldMap))
 
       const column = await findColumn(board, task.columnId)

@@ -7,6 +7,7 @@ import { removeTaskAttachments } from '../../utils/attachments'
 import { requireAssignable } from '../../utils/people'
 import { parseDueOn } from '../../utils/taskFields'
 import { listFields, setFieldValues } from '../../utils/customFields'
+import { notifyAssigned } from '../../utils/notifyEvents'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -96,6 +97,10 @@ export default defineEventHandler(async (event) => {
   if (body.assigneeId !== undefined) {
     if (body.assigneeId !== null) await requireAssignable(project, body.assigneeId)
     patch.assigneeId = body.assigneeId
+    // The person it now belongs to is told, unless they gave it to themselves.
+    if (body.assigneeId && body.assigneeId !== task.assigneeId) {
+      await notifyAssigned(project, task, event.context.session.user.id, body.assigneeId)
+    }
   }
   if (body.dueOn !== undefined) patch.dueOn = parseDueOn(body.dueOn)
   if (body.startOn !== undefined) patch.startOn = parseDueOn(body.startOn)

@@ -5,6 +5,7 @@ import { and, eq, asc } from 'drizzle-orm'
 import { requireTask, genId } from '../../../utils/projects'
 import { commentVisibilityFilter } from '../../../utils/auth-helpers'
 import { publishFromEvent } from '../../../utils/realtime'
+import { notifyComment } from '../../../utils/notifyEvents'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -55,6 +56,7 @@ export default defineEventHandler(async (event) => {
     createdAt: Date.now()
   }).returning()
 
+  await notifyComment(project, _task, event.context.session.user.id, body, comment!.visibility === 'internal')
   await publishFromEvent(event, { type: 'board', projectId: _task.projectId })
   return { ...comment, userName: event.context.session.user.name, keyName: null }
 })

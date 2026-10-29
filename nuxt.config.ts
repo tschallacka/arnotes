@@ -1,3 +1,5 @@
+import { send, setResponseHeader, setResponseStatus } from 'h3'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
 
@@ -32,6 +34,21 @@ export default defineNuxtConfig({
 
   nitro: {
     preset: 'bun',
+    // In dev, a server error is printed as plain text with its stack and answered
+    // as JSON. The default renderer (youch) reads source maps through a
+    // WebAssembly parser that traps ("unreachable") on this project's bundles,
+    // which hid the original error and took the dev worker down with it.
+    devErrorHandler: (error, event) => {
+      console.error(`[dev] ${event.method} ${event.path} -> ${error.statusCode}:`, error.stack ?? error.message)
+      setResponseStatus(event, error.statusCode || 500, error.statusMessage)
+      setResponseHeader(event, 'content-type', 'application/json')
+      return send(event, JSON.stringify({
+        statusCode: error.statusCode || 500,
+        statusMessage: error.statusMessage,
+        message: error.message,
+        data: error.data
+      }))
+    },
     // Live updates: the browser listens on /_ws for changes made elsewhere —
     // an AI agent over MCP, a teammate, another tab.
     experimental: {

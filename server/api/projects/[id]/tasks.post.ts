@@ -6,6 +6,7 @@ import { requireColumn, requireStaff, requireTask, columnTasksOrdered, subtasksO
 import { publishFromEvent } from '../../../utils/realtime'
 import { requireAssignable } from '../../../utils/people'
 import { parseDueOn } from '../../../utils/taskFields'
+import { notifyAssigned } from '../../../utils/notifyEvents'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{
@@ -79,6 +80,8 @@ export default defineEventHandler(async (event) => {
   }).returning()
 
   await db.update(projects).set({ updatedAt: now }).where(eq(projects.id, projectRow.id))
+
+  if (task?.assigneeId) await notifyAssigned(projectRow, task, event.context.session.user.id, task.assigneeId)
 
   await publishFromEvent(event, { type: 'board', projectId: projectRow.id })
   return task
