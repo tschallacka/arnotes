@@ -8,7 +8,7 @@ import { db } from '../db'
 import { projects, projectColumns, projectTasks, taskComments, user, apiKeys } from '../db/schema'
 import type { Project, ProjectColumn, ProjectTask } from '../db/schema'
 import type { ApiKeyContext } from './api-keys'
-import { projectAccessFilter } from './auth-helpers'
+import { audienceOf, boardFilter, commentVisibilityFilter, readableTasksIn, requireStaffAudience, taskVisibilityFilter } from './mcpAccess'
 import { htmlToMarkdown, htmlToPlainText, markdownToHtml } from './markdown'
 import { columnTasksOrdered, positionBetween, projectColumnsOrdered, renumberColumnTasks, RESTORED } from './projects'
 import { ACCENT_COLORS, isAccentColor } from '#shared/utils/colors'
@@ -45,12 +45,10 @@ function agentDeletion(context: ApiKeyContext) {
 
 // ─── lookups ──────────────────────────────────────────────────────────────────
 
-function workspaceFilter(context: ApiKeyContext) {
-  return projectAccessFilter(context.userId, context.teamId)
-}
-
-async function accessibleBoards(context: ApiKeyContext): Promise<Project[]> {
-  return db.select().from(projects).where(workspaceFilter(context))
+// The boards a key can reach are the ones its person can open in the browser;
+// see mcpAccess.ts for the rule and for what each audience may do on them.
+export async function accessibleBoards(context: ApiKeyContext): Promise<Project[]> {
+  return db.select().from(projects).where(await boardFilter(context))
 }
 
 /**
@@ -73,6 +71,13 @@ export async function findBoard(reference: string, context: ApiKeyContext): Prom
   return match
 }
 
+/** A board, for something only its team may do; a customer's contact is refused by name. */
+export async function findStaffBoard(reference: string, context: ApiKeyContext, doing: string): Promise<Project> {
+  const board = await findBoard(reference, context)
+  requireStaffAudience(context, board, doing)
+  return board
+}
+
 /** Columns likewise: an id, or the column name as it reads on the board. */
 async function findColumn(board: Project, ref: string): Promise<ProjectColumn> {
   const columns = await projectColumnsOrdered(board.id)
@@ -90,11 +95,16 @@ async function findColumn(board: Project, ref: string): Promise<ProjectColumn> {
 export async function findTask(
   reference: string,
   context: ApiKeyContext,
-  options: { includeDeleted?: boolean } = {}
+  // `staff` names what is being done when only the board's team may do it.
+  options: { includeDeleted?: boolean, staff?: string } = {}
 ): Promise<{ task: ProjectTask, board: Project }> {
   // A board link with a task open names that task, which is what a user copying
   // out of the address bar will have in hand.
   const id = idFromReference(reference, 'task')
+  const missing = options.includeDeleted
+    ? `No task with id "${id}" exists.`
+    : `No task with id "${id}" exists, or it is in the board's trash — restore_task brings it back.`
+
   const [task] = await db
     .select()
     .from(projectTasks)
@@ -102,19 +112,20 @@ export async function findTask(
       eq(projectTasks.id, id),
       options.includeDeleted ? undefined : isNull(projectTasks.deletedAt)
     ))
-  if (!task) {
-    throw new McpToolError(
-      options.includeDeleted
-        ? `No task with id "${id}" exists.`
-        : `No task with id "${id}" exists, or it is in the board's trash — restore_task brings it back.`
-    )
-  }
+  if (!task) throw new McpToolError(missing)
 
   const [board] = await db
     .select()
     .from(projects)
-    .where(and(eq(projects.id, task.projectId), workspaceFilter(context)))
+    .where(and(eq(projects.id, task.projectId), await boardFilter(context)))
   if (!board) throw new McpToolError(`Task "${id}" is not in this workspace.`)
+
+  // What the person cannot see is not there for the agent either: an internal
+  // task, or a trashed one, is reported as missing to a customer's contact.
+  if (audienceOf(context, board) === 'customer' && (task.visibility === 'internal' || task.deletedAt)) {
+    throw new McpToolError(missing)
+  }
+  if (options.staff) requireStaffAudience(context, board, options.staff)
 
   return { task, board }
 }
@@ -292,7 +303,8 @@ function taskCard(task: ProjectTask, options: {
   }
 }
 
-async function taskDetail(task: ProjectTask, board: Project) {
+async function taskDetail(task: ProjectTask, board: Project, context: ApiKeyContext) {
+  const audience = audienceOf(context, board)
   const columns = await projectColumnsOrdered(board.id)
   const column = columns.find(c => c.id === task.columnId)
 
@@ -307,7 +319,7 @@ async function taskDetail(task: ProjectTask, board: Project) {
     .from(taskComments)
     .leftJoin(user, eq(user.id, taskComments.userId))
     .leftJoin(apiKeys, eq(apiKeys.id, taskComments.apiKeyId))
-    .where(eq(taskComments.taskId, task.id))
+    .where(and(eq(taskComments.taskId, task.id), commentVisibilityFilter(audience)))
     .orderBy(asc(taskComments.createdAt))
 
   return {
@@ -317,7 +329,7 @@ async function taskDetail(task: ProjectTask, board: Project) {
     title: task.title,
     labels: task.tags,
     ...taskSchedule(task, await peopleNames(board)),
-    ...await describedFields(board, task),
+    ...(audience === 'staff' ? await describedFields(board, task) : {}),
     description: task.description ? htmlToMarkdown(task.description) : '',
     createdAt: new Date(task.createdAt).toISOString(),
     updatedAt: new Date(task.updatedAt).toISOString(),
@@ -441,7 +453,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         db
           .select({ projectId: projectTasks.projectId, total: count() })
           .from(projectTasks)
-          .where(and(inArray(projectTasks.projectId, ids), isNull(projectTasks.deletedAt)))
+          .where(and(readableTasksIn(context, boards.slice(0, limit)), isNull(projectTasks.deletedAt)))
           .groupBy(projectTasks.projectId)
       ])
 
@@ -499,7 +511,8 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
             .from(projectTasks)
             .where(and(
               inArray(projectTasks.columnId, columns.map(column => column.id)),
-              isNull(projectTasks.deletedAt)
+              isNull(projectTasks.deletedAt),
+              taskVisibilityFilter(audienceOf(context, board))
             ))
             .orderBy(asc(projectTasks.position))
         : []
@@ -509,7 +522,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       const [total] = await db
         .select({ tasks: count() })
         .from(projectTasks)
-        .where(and(eq(projectTasks.projectId, board.id), isNull(projectTasks.deletedAt)))
+        .where(and(eq(projectTasks.projectId, board.id), isNull(projectTasks.deletedAt), taskVisibilityFilter(audienceOf(context, board))))
 
       // Clip each column before counting updates: the counts are only needed for
       // the tasks that make it into the answer.
@@ -519,7 +532,8 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       })
       const counts = await commentCounts(grouped.flatMap(group => group.shown.map(task => task.id)))
       const people = await peopleNames(board)
-      const fieldDefs = await listFields(board.id)
+      // Custom fields are the team's own; a contact's board has none to show.
+      const fieldDefs = audienceOf(context, board) === 'staff' ? await listFields(board.id) : []
       const fieldValues = fieldDefs.length ? await loadFieldValues(grouped.flatMap(group => group.shown.map(task => task.id))) : {}
 
       return {
@@ -564,7 +578,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
     },
     async handler(args, context) {
       const { task, board } = await findTask(requireString(args, 'id'), context)
-      return taskDetail(task, board)
+      return taskDetail(task, board, context)
     }
   },
   {
@@ -619,7 +633,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         .select()
         .from(projectTasks)
         .where(and(
-          inArray(projectTasks.projectId, [...boardsById.keys()]),
+          readableTasksIn(context, boards),
           isNull(projectTasks.deletedAt)
         ))
         .orderBy(asc(projectTasks.position))
@@ -664,7 +678,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         .select({ tags: projectTasks.tags })
         .from(projectTasks)
         .where(and(
-          inArray(projectTasks.projectId, boards.map(board => board.id)),
+          readableTasksIn(context, boards),
           isNull(projectTasks.deletedAt)
         ))
 
@@ -748,7 +762,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       required: ['board']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'changing the board')
       const name = optionalString(args, 'name')?.trim()
       const description = optionalString(args, 'description')
       const status = optionalString(args, 'status')
@@ -797,7 +811,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       required: ['board', 'name']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'adding a column')
       const name = requireString(args, 'name').trim()
       const afterRef = optionalString(args, 'after')
       const after = afterRef?.trim() ? await findColumn(board, afterRef) : undefined
@@ -838,7 +852,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       required: ['board', 'column']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'changing a column')
       const column = await findColumn(board, requireString(args, 'column'))
       const name = optionalString(args, 'name')?.trim()
       const colorRef = optionalString(args, 'color')?.trim().toLowerCase()
@@ -892,7 +906,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       required: ['board', 'column']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'deleting a column')
       const column = await findColumn(board, requireString(args, 'column'))
 
       const columns = await projectColumnsOrdered(board.id)
@@ -951,7 +965,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       const [column] = await db.select().from(projectColumns).where(eq(projectColumns.id, id))
       if (!column) throw new McpToolError(`No column with id "${id}" exists. It may have been removed for good.`)
 
-      const board = await findBoard(column.projectId, context)
+      const board = await findStaffBoard(column.projectId, context, 'restoring a column')
       if (!column.deletedAt) return { id, alreadyActive: true, column: column.name }
 
       const withColumn = await db
@@ -1002,6 +1016,14 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
     },
     async handler(args, context) {
       const board = await findBoard(requireString(args, 'board'), context)
+      // A customer's contact files a request; dates, assignee, the done mark and
+      // custom fields are the team's to set, as they are in the app.
+      if (audienceOf(context, board) === 'customer') {
+        const planning = ['dueOn', 'startOn', 'assignee', 'completed', 'fields'].filter(key => args[key] !== undefined)
+        if (planning.length) {
+          throw new McpToolError(`You work on "${board.name}" as a customer, so you can file a task but not set its ${planning.join(', ')}: that is for the team.`)
+        }
+      }
       const column = await findColumn(board, requireString(args, 'column'))
       const title = requireString(args, 'title').trim()
       const markdown = optionalString(args, 'description') ?? ''
@@ -1056,7 +1078,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       required: ['id']
     },
     async handler(args, context) {
-      const { task, board } = await findTask(requireString(args, 'id'), context)
+      const { task, board } = await findTask(requireString(args, 'id'), context, { staff: 'changing tasks' })
       const title = optionalString(args, 'title')?.trim()
       const markdown = optionalString(args, 'description')
       const labels = optionalStringArray(args, 'labels')
@@ -1111,7 +1133,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       required: ['id']
     },
     async handler(args, context) {
-      const { task, board } = await findTask(requireString(args, 'id'), context)
+      const { task, board } = await findTask(requireString(args, 'id'), context, { staff: 'moving tasks' })
       const columnRef = optionalString(args, 'column')
       const from = await findColumn(board, task.columnId)
       const column = columnRef ? await findColumn(board, columnRef) : from
@@ -1156,7 +1178,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       required: ['id']
     },
     async handler(args, context) {
-      const { task, board } = await findTask(requireString(args, 'id'), context)
+      const { task, board } = await findTask(requireString(args, 'id'), context, { staff: 'deleting tasks' })
       await db.update(projectTasks).set(agentDeletion(context)).where(eq(projectTasks.id, task.id))
       await touchBoard(board.id)
       return {
@@ -1182,7 +1204,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       required: ['id']
     },
     async handler(args, context) {
-      const { task, board } = await findTask(requireString(args, 'id'), context, { includeDeleted: true })
+      const { task, board } = await findTask(requireString(args, 'id'), context, { includeDeleted: true, staff: 'restoring tasks' })
       if (!task.deletedAt) return { id: task.id, alreadyActive: true, title: task.title }
 
       const [column] = await db.select().from(projectColumns).where(eq(projectColumns.id, task.columnId))

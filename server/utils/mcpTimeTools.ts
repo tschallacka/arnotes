@@ -2,7 +2,7 @@
 // logged. Entries belong to the person who owns the API key.
 import { formatDuration } from '#shared/utils/duration'
 import { entriesWhere, loadEntries, logEntry, parseEntryDay, parseEntryMinutes, parseEntryNote, parseRange } from './timeTracking'
-import { findBoard, findTask } from './mcpBoardTools'
+import { findStaffBoard, findTask } from './mcpBoardTools'
 import { McpToolError, asToolError, optionalString, requireString } from './mcpToolKit'
 import type { McpToolDefinition } from './mcpToolKit'
 
@@ -25,7 +25,7 @@ export const MCP_TIME_TOOLS: McpToolDefinition[] = [
       required: ['task', 'duration']
     },
     async handler(args, context) {
-      const { task, board } = await findTask(requireString(args, 'task'), context)
+      const { task, board } = await findTask(requireString(args, 'task'), context, { staff: 'time tracking' })
       const minutes = asToolError(() => parseEntryMinutes({ duration: args.duration }))
       const day = asToolError(() => parseEntryDay(optionalString(args, 'day')))
       const entry = await logEntry({
@@ -66,13 +66,13 @@ export const MCP_TIME_TOOLS: McpToolDefinition[] = [
       let scope: Record<string, unknown>
 
       if (taskRef) {
-        const { task, board } = await findTask(taskRef, context)
+        const { task, board } = await findTask(taskRef, context, { staff: 'time tracking' })
         where = entriesWhere({ taskId: task.id })
         scope = { task: { id: task.id, title: task.title }, board: { id: board.id, name: board.name } }
       } else {
         const range = asToolError(() => parseRange(optionalString(args, 'from'), optionalString(args, 'to')))
         if (boardRef) {
-          const board = await findBoard(boardRef, context)
+          const board = await findStaffBoard(boardRef, context, 'time tracking')
           where = entriesWhere({ projectIds: [board.id], ...range })
           scope = { board: { id: board.id, name: board.name }, ...range }
         } else {

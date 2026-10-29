@@ -73,9 +73,10 @@ export async function customerIdsOf(userId: string): Promise<string[]> {
  * Projects a browser session can reach: `projectAccessFilter`, plus — in the
  * personal workspace — the projects of every customer the user is a contact of.
  *
- * MCP keys and the in-app assistant keep using `projectAccessFilter`, so a
- * customer project is never reachable through a contact's key or assistant.
- * Their output is not filtered by visibility, and must not need to be.
+ * API keys use it too (see mcpAccess.ts) and filter what they read by the same
+ * audience rule, so an agent sees what its person sees. The in-app assistant
+ * keeps using `projectAccessFilter`: its output is not filtered by visibility,
+ * so a customer project is not reachable through it.
  */
 export function sessionProjectFilter(userId: string, teamId: string | null, customerIds: string[]) {
   const own = projectAccessFilter(userId, teamId)

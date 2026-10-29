@@ -3,7 +3,7 @@
 import { asc, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { projectMessages, user } from '../db/schema'
-import { findBoard } from './mcpBoardTools'
+import { findStaffBoard } from './mcpBoardTools'
 import { McpToolError, asToolError, asToolErrorAsync, newId, optionalLimit, optionalString, requireString } from './mcpToolKit'
 import type { McpToolDefinition } from './mcpToolKit'
 import { parseMessageBody, parseMessageTitle, requireReplyTarget } from './messages'
@@ -25,7 +25,7 @@ export const MCP_MESSAGE_TOOLS: McpToolDefinition[] = [
       required: ['board']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'messages')
       const limit = optionalLimit(args, 'limit', 10, 50)
 
       const rows = await db
@@ -77,7 +77,7 @@ export const MCP_MESSAGE_TOOLS: McpToolDefinition[] = [
       required: ['board', 'body']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'messages')
       const body = asToolError(() => parseMessageBody(args.body))
       const replyTo = optionalString(args, 'replyTo')
       const title = optionalString(args, 'title')

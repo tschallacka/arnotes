@@ -145,6 +145,17 @@ function expiryLabel(key: ApiKeySummary): string {
         size="xs"
         class="ml-auto"
       />
+      <UButton
+        to="/api/settings/skill"
+        external
+        download="SKILL.md"
+        label="Agent skill"
+        icon="i-lucide-download"
+        color="neutral"
+        variant="ghost"
+        size="xs"
+        data-skill-download
+      />
     </div>
 
     <div class="divide-y divide-default">

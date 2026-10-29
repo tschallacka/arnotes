@@ -4,7 +4,7 @@
 import { db } from '../db'
 import { projectFields } from '../db/schema'
 import { MAX_FIELDS_PER_PROJECT, listFields, parseFieldName, parseFieldOptions, parseFieldType } from './customFields'
-import { findBoard, touchBoard } from './mcpBoardTools'
+import { findStaffBoard, touchBoard } from './mcpBoardTools'
 import { McpToolError, asToolError, newId, optionalStringArray, requireString } from './mcpToolKit'
 import type { McpToolDefinition } from './mcpToolKit'
 
@@ -23,7 +23,7 @@ export const MCP_FIELD_TOOLS: McpToolDefinition[] = [
       required: ['board']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'custom fields')
       const fields = await listFields(board.id)
       return {
         board: { id: board.id, name: board.name },
@@ -52,7 +52,7 @@ export const MCP_FIELD_TOOLS: McpToolDefinition[] = [
       required: ['board', 'name', 'type']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'custom fields')
       const name = asToolError(() => parseFieldName(requireString(args, 'name')))
       const type = asToolError(() => parseFieldType(requireString(args, 'type')))
       const requested = optionalStringArray(args, 'options')

@@ -1,0 +1,158 @@
+// What the key's person sees on their own pages: My tasks and the Inbox. An agent
+// acting for someone reads what is theirs the way they would, and the same
+// audience rule applies: a contact's agent is not shown tasks the contact cannot
+// see.
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { db } from '../db'
+import { notifications, projectTasks, projects, user } from '../db/schema'
+import { accessibleBoards } from './mcpBoardTools'
+import { readableTasksIn } from './mcpAccess'
+import { McpToolError, optionalBoolean, optionalLimit, optionalStringArray } from './mcpToolKit'
+import type { McpToolDefinition } from './mcpToolKit'
+
+export const MCP_ME_TOOLS: McpToolDefinition[] = [
+  {
+    name: 'my_tasks',
+    title: 'Read my tasks',
+    description: 'The tasks assigned to the key\'s owner across every board they can open, soonest due date first: the same list as "My tasks" in the app. Finished tasks are left out unless asked for.',
+    scope: 'boards:read',
+    readOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        includeCompleted: { type: 'boolean', description: 'Also return tasks that are done (default false).' },
+        limit: { type: 'number', description: 'Maximum tasks to return (default 50, max 200).' }
+      }
+    },
+    async handler(args, context) {
+      const includeCompleted = optionalBoolean(args, 'includeCompleted') ?? false
+      const limit = optionalLimit(args, 'limit', 50, 200)
+      const boards = await accessibleBoards(context)
+      if (!boards.length) return { total: 0, tasks: [] }
+
+      const rows = await db
+        .select({
+          id: projectTasks.id,
+          title: projectTasks.title,
+          board: projects.name,
+          boardId: projects.id,
+          dueOn: projectTasks.dueOn,
+          startOn: projectTasks.startOn,
+          completedAt: projectTasks.completedAt,
+          labels: projectTasks.tags
+        })
+        .from(projectTasks)
+        .innerJoin(projects, eq(projects.id, projectTasks.projectId))
+        .where(and(
+          eq(projectTasks.assigneeId, context.userId),
+          isNull(projectTasks.deletedAt),
+          // Subtasks live in their parent, as they do in the app's list.
+          isNull(projectTasks.parentTaskId),
+          readableTasksIn(context, boards),
+          includeCompleted ? undefined : isNull(projectTasks.completedAt)
+        ))
+        .orderBy(asc(projectTasks.dueOn), asc(projectTasks.title))
+
+      // Tasks with no date sort last, as in the app.
+      const sorted = [...rows].sort((a, b) => (a.dueOn ?? '9999').localeCompare(b.dueOn ?? '9999'))
+      return {
+        total: sorted.length,
+        tasks: sorted.slice(0, limit).map(row => ({
+          id: row.id,
+          title: row.title,
+          board: { id: row.boardId, name: row.board },
+          ...(row.dueOn ? { dueOn: row.dueOn } : {}),
+          ...(row.startOn ? { startOn: row.startOn } : {}),
+          ...(row.completedAt ? { completed: true } : {}),
+          ...(row.labels.length ? { labels: row.labels } : {})
+        }))
+      }
+    }
+  },
+  {
+    name: 'list_notifications',
+    title: 'Read my inbox',
+    description: 'The key\'s owner\'s inbox, newest first: who assigned them what, comments and messages for them. The same list as the Inbox in the app.',
+    scope: 'boards:read',
+    readOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        unreadOnly: { type: 'boolean', description: 'Only notifications not yet read (default false).' },
+        limit: { type: 'number', description: 'Maximum notifications to return (default 20, max 100).' }
+      }
+    },
+    async handler(args, context) {
+      const unreadOnly = optionalBoolean(args, 'unreadOnly') ?? false
+      const limit = optionalLimit(args, 'limit', 20, 100)
+
+      const rows = await db
+        .select({
+          id: notifications.id,
+          type: notifications.type,
+          title: notifications.title,
+          body: notifications.body,
+          board: projects.name,
+          taskId: notifications.taskId,
+          createdAt: notifications.createdAt,
+          readAt: notifications.readAt,
+          actor: user.name
+        })
+        .from(notifications)
+        .innerJoin(projects, eq(projects.id, notifications.projectId))
+        .leftJoin(user, eq(user.id, notifications.actorId))
+        .where(and(eq(notifications.userId, context.userId), unreadOnly ? isNull(notifications.readAt) : undefined))
+        .orderBy(desc(notifications.createdAt))
+        .limit(limit)
+
+      const unread = (await db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(and(eq(notifications.userId, context.userId), isNull(notifications.readAt)))).length
+
+      return {
+        unread,
+        notifications: rows.map(row => ({
+          id: row.id,
+          type: row.type,
+          title: row.title,
+          ...(row.body ? { body: row.body } : {}),
+          board: row.board,
+          ...(row.taskId ? { taskId: row.taskId } : {}),
+          ...(row.actor ? { from: row.actor } : {}),
+          at: new Date(row.createdAt).toISOString(),
+          read: row.readAt !== null
+        }))
+      }
+    }
+  },
+  {
+    name: 'mark_notifications_read',
+    title: 'Mark inbox notifications read',
+    description: 'Mark some of the key\'s owner\'s notifications read, by id, or all of them with "all": true.',
+    scope: 'boards:write',
+    readOnly: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ids: { type: 'array', items: { type: 'string' }, description: 'Notification ids from list_notifications.' },
+        all: { type: 'boolean', description: 'Mark every unread notification read.' }
+      }
+    },
+    async handler(args, context) {
+      const ids = optionalStringArray(args, 'ids') ?? []
+      const all = optionalBoolean(args, 'all') ?? false
+      if (!all && !ids.length) throw new McpToolError('Pass "ids", or "all": true.')
+
+      const marked = await db.update(notifications)
+        .set({ readAt: Date.now() })
+        .where(and(
+          eq(notifications.userId, context.userId),
+          isNull(notifications.readAt),
+          all ? undefined : inArray(notifications.id, ids.slice(0, 500))
+        ))
+        .returning({ id: notifications.id })
+      return { marked: marked.length }
+    }
+  }
+]

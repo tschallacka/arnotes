@@ -1,0 +1,105 @@
+// The agent skill: a SKILL.md an AI agent can be given so it knows how to work
+// with Taskmanager on someone's behalf. It is generated from the tool registry the
+// server answers `tools/list` from, so what it says the tools are is what they
+// are, and a tool added tomorrow is in it tomorrow.
+import { MCP_TOOLS } from './mcpRegistry'
+import type { McpToolDefinition } from './mcpToolKit'
+
+// Tools are grouped in the order a person would think of them.
+const GROUPS: { title: string, match: (tool: McpToolDefinition) => boolean }[] = [
+  { title: 'Boards, columns and tasks', match: tool => /^(list_boards|get_board|get_task|search_tasks|list_task_labels|create_board|update_board|(create|update|delete|restore)_(column|task)|move_task)$/.test(tool.name) },
+  { title: 'My tasks and my inbox', match: tool => /^(my_tasks|list_notifications|mark_notifications_read)$/.test(tool.name) },
+  { title: 'Custom fields', match: tool => /_fields?$/.test(tool.name) },
+  { title: 'Status updates', match: tool => /status_update/.test(tool.name) },
+  { title: 'Messages', match: tool => /message/.test(tool.name) && !/notification/.test(tool.name) },
+  { title: 'Time', match: tool => /time$/.test(tool.name) }
+]
+
+/** The first sentence of a description, enough to choose a tool by. */
+function firstSentence(text: string): string {
+  const match = /^(.+?[.!?])(\s|$)/.exec(text.trim())
+  return (match ? match[1]! : text.trim()).replace(/\s+/g, ' ')
+}
+
+function toolLine(tool: McpToolDefinition): string {
+  return `- \`${tool.name}\` (${tool.readOnly ? 'read' : 'write'}): ${firstSentence(tool.description)}`
+}
+
+export function buildAgentSkill(origin: string): string {
+  const grouped = new Set<string>()
+  const sections = GROUPS.map((group) => {
+    const tools = MCP_TOOLS.filter(tool => !grouped.has(tool.name) && group.match(tool))
+    tools.forEach(tool => grouped.add(tool.name))
+    return tools.length ? `### ${group.title}\n\n${tools.map(toolLine).join('\n')}` : ''
+  }).filter(Boolean)
+
+  const rest = MCP_TOOLS.filter(tool => !grouped.has(tool.name))
+  if (rest.length) sections.push(`### Other\n\n${rest.map(toolLine).join('\n')}`)
+
+  return `---
+name: taskmanager
+description: Work with a person's Taskmanager boards, tasks, time, messages and inbox over MCP, acting as that person. Use when the user asks about their projects or tasks, wants work filed, updated or reported, or wants time logged or a status update posted.
+---
+
+# Taskmanager
+
+Taskmanager is a project and task manager: boards of tasks in columns, with
+dates, assignees, custom fields, status updates, messages, time tracking and an
+inbox. This skill lets you read and change it for the person whose API key you
+were given.
+
+## Connecting
+
+The server speaks MCP over HTTP at \`${origin.replace(/\/$/, '')}/api/mcp\` and
+expects \`Authorization: Bearer <api key>\`. The person creates the key under
+Settings, chooses its permissions and can revoke it at any time:
+
+- \`boards:read\` lets you read.
+- \`boards:write\` lets you change things.
+
+A key belongs to one workspace (their personal one, or one team). Never print the
+key, put it in a file you commit, or paste it into a task or message.
+
+## You act as the person, and no more
+
+A key is the person acting through you. You can open the same boards they can
+and you see the same things they see on them. Anything hidden from them is hidden
+from you, and anything the app would refuse them is refused to you.
+
+- **On their team's boards** you see every task, update and custom field.
+- **On a customer's board, as a customer's contact**, you see only tasks and
+  updates that are shared with customers, no custom fields, and none of the
+  team's status updates, messages or time. You can file a task. You cannot plan
+  it (dates, assignee, done mark, fields), change it, or change the board.
+- Trashed things are not there. Deleting puts things in the board's trash, which
+  the person can restore; nothing here deletes for good, and boards cannot be
+  deleted over MCP.
+
+When a tool refuses with a reason that names a customer role, that is the rule
+working, not a fault: tell the person what you could not do and why, and do not
+look for another route to it.
+
+## How to work
+
+1. **Read before you write.** \`get_board\` gives the board, column and task names
+   exactly as written; use them verbatim. \`get_task\` has the full description
+   and the thread of updates.
+2. **Say what you will change, then change only that.** Writes replace the value
+   you send, so for a description read the task first and send the whole text.
+3. **Clearing:** pass an empty string to clear a date or assignee, and \`null\` to
+   clear a custom field value.
+4. **Dates** are \`YYYY-MM-DD\`. **Durations** are written like \`1h 30m\`, \`1:30\`
+   or \`45m\`; a bare number is hours.
+5. **Be brief in what you post.** Updates, messages and status updates are read
+   by people; say what changed and why in a few sentences.
+6. **Check your result.** Write tools return the card or entry as it is stored;
+   read it rather than assuming.
+
+## Tools
+
+${sections.join('\n\n')}
+
+Each tool's full description and parameters are in the server's \`tools/list\`
+answer; trust that over this summary if they differ.
+`
+}

@@ -3,7 +3,7 @@
 import { desc, eq } from 'drizzle-orm'
 import { db } from '../db'
 import { projects, projectStatusUpdates, user } from '../db/schema'
-import { findBoard, touchBoard } from './mcpBoardTools'
+import { findStaffBoard, touchBoard } from './mcpBoardTools'
 import { McpToolError, asToolError, newId, optionalLimit, optionalString, requireString } from './mcpToolKit'
 import type { McpToolDefinition } from './mcpToolKit'
 import { PROJECT_STATUSES, parseProjectStatus } from './taskFields'
@@ -26,7 +26,7 @@ export const MCP_STATUS_TOOLS: McpToolDefinition[] = [
       required: ['board']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'status updates')
       const limit = optionalLimit(args, 'limit', 10, 100)
 
       const rows = await db
@@ -71,7 +71,7 @@ export const MCP_STATUS_TOOLS: McpToolDefinition[] = [
       required: ['board', 'status']
     },
     async handler(args, context) {
-      const board = await findBoard(requireString(args, 'board'), context)
+      const board = await findStaffBoard(requireString(args, 'board'), context, 'status updates')
       const status = asToolError(() => parseProjectStatus(requireString(args, 'status')))
       if (!status) throw new McpToolError('"status" is required.')
       const body = (optionalString(args, 'body') ?? '').trim().slice(0, MAX_BODY)
