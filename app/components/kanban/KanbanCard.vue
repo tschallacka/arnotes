@@ -70,6 +70,8 @@ const internal = computed(() => props.task.visibility === 'internal')
 
 const assignee = computed(() => boardPerson(props.task.assigneeId))
 
+const cover = computed(() => /<img[^>]+src="(\/api\/attachments\/tasks\/[^"]+)"/.exec(props.task.description ?? '')?.[1] ?? null)
+
 // The badge counts every subtask under the task, at any nesting depth, not
 // just its direct children.
 function allSubtasks(taskId: string): ProjectTask[] {
@@ -100,6 +102,16 @@ const hasMeta = computed(() =>
     @keydown.enter.prevent="trashed || $emit('open', task.id)"
     @keydown.space.prevent="trashed || $emit('open', task.id)"
   >
+    <!-- The task's first attached image, bled to the card edges as its cover. -->
+    <img
+      v-if="cover && !trashed"
+      :src="cover"
+      alt=""
+      loading="lazy"
+      data-card-cover
+      class="-mx-3 -mt-2.5 mb-2 aspect-[16/9] w-[calc(100%+1.5rem)] max-w-none rounded-t-lg object-cover"
+    >
+
     <div class="flex items-start gap-1.5">
       <!-- The done mark, Asana's circle. A button for staff, so ticking a task
            off does not mean opening it; `.stop` keeps the click off the card. -->
