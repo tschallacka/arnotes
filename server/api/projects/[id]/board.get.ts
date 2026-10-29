@@ -3,6 +3,7 @@ import { projectColumns, projectTasks, taskComments } from '../../../db/schema'
 import { and, eq, asc, inArray, count, isNull, isNotNull } from 'drizzle-orm'
 import { requireProject } from '../../../utils/projects'
 import { commentVisibilityFilter, taskVisibilityFilter } from '../../../utils/auth-helpers'
+import { listFields, loadFieldValues } from '../../../utils/customFields'
 
 // Full board in one payload: columns ordered, tasks grouped by column, and the
 // per-task update count the cards render as a badge.
@@ -99,11 +100,18 @@ export default defineEventHandler(async (event) => {
     trashedCount = Number(trashedTasks?.total ?? 0) + Number(trashedColumns?.total ?? 0)
   }
 
+  // Custom fields are the team's own: a contact's board carries neither the
+  // definitions nor anyone's values.
+  const fields = isCustomer ? [] : await listFields(id)
+  const fieldValues = fields.length ? await loadFieldValues([...tasks, ...subtasks].map(t => t.id)) : {}
+
   return {
     audience: project.audience,
     columns,
     tasks,
     subtasks,
+    fields,
+    fieldValues,
     commentCounts: Object.fromEntries(counts.map(c => [c.taskId, Number(c.total)])),
     trashedCount
   }

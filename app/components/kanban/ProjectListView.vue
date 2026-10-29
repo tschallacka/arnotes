@@ -3,10 +3,25 @@ import { format } from 'date-fns'
 import { columnDotAttrs } from '~/utils/tagColors'
 import { dueDayToMs, isOverdueDay, todayIso } from '~/utils/dueDate'
 import type { ProjectTask } from '~/composables/useProjects'
+import { errorMessage } from '~/utils/untypedFetch'
 
 const emit = defineEmits<{ openTask: [taskId: string] }>()
 
-const { boardColumns, visibleColumnTasks, subtasksOf, personById, updateTask, isTrashed } = useProjects()
+const { boardColumns, visibleColumnTasks, subtasksOf, personById, updateTask, isTrashed, activeProjectId } = useProjects()
+
+// A column per custom field, each cell editable in place.
+const toast = useToast()
+const { fields, valueOf, setValues } = useCustomFields(activeProjectId)
+
+const FIELD_WIDTH: Record<string, string> = { select: 'w-28', number: 'w-20', date: 'w-28', text: 'w-32' }
+
+async function setField(taskId: string, fieldId: string, value: string | null) {
+  try {
+    await setValues(taskId, { [fieldId]: value })
+  } catch (e) {
+    toast.add({ title: errorMessage(e, 'Could not save the field'), icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
 
 const collapsed = ref(new Set<string>())
 
@@ -48,6 +63,20 @@ function subtaskProgress(taskId: string) {
 
 <template>
   <div class="h-full overflow-y-auto px-4 pb-10 lg:px-6">
+    <div
+      v-if="fields.length"
+      class="mt-3 hidden items-center gap-3 px-3 text-[0.6875rem] font-medium uppercase tracking-wide text-dimmed md:flex"
+      data-list-header
+    >
+      <span class="flex-1" />
+      <span
+        v-for="field in fields"
+        :key="field.id"
+        class="shrink-0 truncate px-1"
+        :class="FIELD_WIDTH[field.type]"
+      >{{ field.name }}</span>
+      <span class="w-[6.75rem] shrink-0" />
+    </div>
     <div
       v-for="{ column, tasks } in sections"
       :key="column.id"
@@ -125,14 +154,30 @@ function subtaskProgress(taskId: string) {
               />
             </span>
 
-            <UAvatar
-              v-if="personById(task.assigneeId)"
-              :src="personById(task.assigneeId)!.image ?? undefined"
-              :alt="personById(task.assigneeId)!.name || personById(task.assigneeId)!.email"
-              :title="personById(task.assigneeId)!.name || personById(task.assigneeId)!.email"
-              size="2xs"
-              data-list-assignee
-            />
+            <span
+              v-for="field in fields"
+              :key="field.id"
+              class="hidden shrink-0 md:block"
+              :class="FIELD_WIDTH[field.type]"
+              :data-list-field="field.name"
+            >
+              <KanbanFieldInput
+                :field="field"
+                :value="valueOf(task.id, field.id)"
+                @change="setField(task.id, field.id, $event)"
+              />
+            </span>
+
+            <span class="flex w-5 shrink-0 justify-center">
+              <UAvatar
+                v-if="personById(task.assigneeId)"
+                :src="personById(task.assigneeId)!.image ?? undefined"
+                :alt="personById(task.assigneeId)!.name || personById(task.assigneeId)!.email"
+                :title="personById(task.assigneeId)!.name || personById(task.assigneeId)!.email"
+                size="2xs"
+                data-list-assignee
+              />
+            </span>
 
             <span
               class="w-16 shrink-0 text-right text-xs tabular-nums"

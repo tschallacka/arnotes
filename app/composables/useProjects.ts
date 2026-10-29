@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue'
 import type MiniSearch from 'minisearch'
 import { realtimeHeaders } from '~/composables/useRealtime'
+import { clearCustomFields, ingestBoardFields } from '~/composables/useCustomFields'
+import type { FieldValues, ProjectField } from '~/composables/useCustomFields'
 import { matchesTagRequirements, type TagRequirement } from '#shared/utils/tags'
 
 // Mirrors VISIBILITIES in server/db/schema.ts: `internal` is for the
@@ -116,6 +118,10 @@ interface BoardPayload {
   tasks: ProjectTask[]
   subtasks?: ProjectTask[]
   commentCounts: Record<string, number>
+  // The project's custom fields and each task's values. Staff only; a
+  // contact's board carries empty ones.
+  fields?: ProjectField[]
+  fieldValues?: Record<string, FieldValues>
   // How much is in this board's trash. Sent whether or not the trashed rows
   // themselves were asked for — the header has to be able to say there is
   // something to look at before the user has gone looking.
@@ -414,6 +420,7 @@ export function useProjects() {
     // Team switch: drop per-project board state, filters do not carry over.
     _board.value = null
     _boardCache.clear()
+    clearCustomFields()
     _subtasks.value = []
     _people.value = []
     _commentCounts.value = {}
@@ -545,6 +552,7 @@ export function useProjects() {
         _people.value = people
         _commentCounts.value = board.commentCounts ?? {}
         _trashedCount.value = board.trashedCount ?? 0
+        ingestBoardFields(id, board.fields ?? [], board.fieldValues ?? {})
       }
       return board
     } finally {
@@ -704,6 +712,7 @@ export function useProjects() {
         _subtasks.value = board.subtasks ?? []
         _commentCounts.value = board.commentCounts ?? {}
         _trashedCount.value = board.trashedCount ?? 0
+        ingestBoardFields(projectId, board.fields ?? [], board.fieldValues ?? {})
       }
     } catch { /* board may be gone; leave state as-is */ }
   }

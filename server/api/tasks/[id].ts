@@ -6,6 +6,7 @@ import { publishFromEvent } from '../../utils/realtime'
 import { removeTaskAttachments } from '../../utils/attachments'
 import { requireAssignable } from '../../utils/people'
 import { parseDueOn } from '../../utils/taskFields'
+import { listFields, setFieldValues } from '../../utils/customFields'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -54,7 +55,19 @@ export default defineEventHandler(async (event) => {
     parentTaskId?: string | null
     beforeId?: string | null
     afterId?: string | null
+    // `{ fieldId: value }`; null clears. Checked before the task is touched.
+    fields?: Record<string, unknown>
   }>(event)
+
+  // Values are validated and saved first, so a bad one rejects the whole edit
+  // instead of leaving the rest of it half applied.
+  let fieldValues: Record<string, string> | undefined
+  if (body.fields !== undefined) {
+    if (body.fields === null || typeof body.fields !== 'object' || Array.isArray(body.fields)) {
+      throw createError({ statusCode: 400, message: 'Fields are a map of field to value' })
+    }
+    fieldValues = await setFieldValues(task.id, await listFields(project.id), body.fields)
+  }
 
   const patch: {
     title?: string
@@ -139,7 +152,7 @@ export default defineEventHandler(async (event) => {
     const [updated] = await db.update(projectTasks).set(patch).where(eq(projectTasks.id, id)).returning()
     await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, project.id))
     await publishFromEvent(event, { type: 'board', projectId: project.id })
-    return updated
+    return fieldValues ? { ...updated, fieldValues } : updated
   }
 
   let targetColumnId = task.columnId
@@ -182,5 +195,5 @@ export default defineEventHandler(async (event) => {
   await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, project.id))
 
   await publishFromEvent(event, { type: 'board', projectId: project.id })
-  return updated
+  return fieldValues ? { ...updated, fieldValues } : updated
 })

@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, bigint, integer, numeric, index, uniqueIndex, json, type AnyPgColumn } from 'drizzle-orm/pg-core'
+import { pgTable, text, boolean, timestamp, bigint, integer, numeric, index, uniqueIndex, json, primaryKey, type AnyPgColumn } from 'drizzle-orm/pg-core'
 
 // ─── Better Auth tables ───────────────────────────────────────────────────────
 
@@ -327,6 +327,53 @@ export const projectTasks = pgTable(
 )
 
 export type ProjectTask = typeof projectTasks.$inferSelect
+
+// Custom fields: columns of a project's own that the list shows and each task
+// fills in, such as a priority or an estimate. A field belongs to one project
+// and is defined once; the values live in task_field_values, one row per task
+// and field, so a field added later costs the existing tasks nothing.
+export const FIELD_TYPES = ['text', 'number', 'select', 'date'] as const
+export type FieldType = typeof FIELD_TYPES[number]
+
+/** One choice of a select field. The id is what a task stores, so a label can be renamed. */
+export interface FieldOption {
+  id: string
+  label: string
+  color: string
+}
+
+export const projectFields = pgTable(
+  'project_fields',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    type: text('type').$type<FieldType>().notNull(),
+    // Only a select field has any.
+    options: json('options').$type<FieldOption[]>().notNull().default([]),
+    position: integer('position').notNull(),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [index('project_fields_project_id_idx').on(table.projectId)]
+)
+
+export type ProjectField = typeof projectFields.$inferSelect
+
+// Stored as text whatever the field's type: a number as its digits, a date as
+// `YYYY-MM-DD`, a select as the option's id. A task with nothing to say for a
+// field has no row, which is also what clearing one does.
+export const taskFieldValues = pgTable(
+  'task_field_values',
+  {
+    taskId: text('task_id').notNull().references(() => projectTasks.id, { onDelete: 'cascade' }),
+    fieldId: text('field_id').notNull().references(() => projectFields.id, { onDelete: 'cascade' }),
+    value: text('value').notNull()
+  },
+  table => [
+    primaryKey({ columns: [table.taskId, table.fieldId] }),
+    index('task_field_values_field_id_idx').on(table.fieldId)
+  ]
+)
 
 export const taskComments = pgTable(
   'task_comments',

@@ -12,10 +12,11 @@ import { projectAccessFilter } from './auth-helpers'
 import { htmlToMarkdown, htmlToPlainText, markdownToHtml } from './markdown'
 import { columnTasksOrdered, positionBetween, projectColumnsOrdered, renumberColumnTasks, RESTORED } from './projects'
 import { ACCENT_COLORS, isAccentColor } from '#shared/utils/colors'
-import { McpToolError, asToolError, excerpt, idFromReference, newId, optionalBoolean, optionalLimit, optionalString, optionalStringArray, requireString } from './mcpToolKit'
+import { McpToolError, asToolError, asToolErrorAsync, excerpt, idFromReference, newId, optionalBoolean, optionalLimit, optionalString, optionalStringArray, requireString } from './mcpToolKit'
 import type { McpToolDefinition } from './mcpToolKit'
 import { MAX_PROJECT_DESCRIPTION, PROJECT_STATUSES, parseDueOn, parseProjectStatus } from './taskFields'
 import { projectPeople } from './people'
+import { checkFieldValues, describeFieldValues, listFields, loadFieldValues, setFieldValues } from './customFields'
 
 const MAX_LABELS = 10
 const DEFAULT_COLUMN_NAMES = ['Backlog', 'To do', 'Verify', 'Done']
@@ -166,7 +167,18 @@ const TASK_FIELD_PROPERTIES = {
   dueOn: { type: 'string', description: 'Due date as YYYY-MM-DD. Pass an empty string to clear it.' },
   startOn: { type: 'string', description: 'Start date as YYYY-MM-DD, shown as the left edge of the task on the timeline. Pass an empty string to clear it.' },
   assignee: { type: 'string', description: 'Who has the task: a person on the board by name, email or id. Pass an empty string to unassign.' },
-  completed: { type: 'boolean', description: 'Mark the task done (true) or not done (false). This is separate from its column.' }
+  completed: { type: 'boolean', description: 'Mark the task done (true) or not done (false). This is separate from its column.' },
+  fields: { type: 'object', description: 'Custom field values by field name, e.g. {"Priority": "High", "Estimate (hours)": 3}. list_fields shows what the board has; a select takes one of its option labels, and null clears a value.' }
+}
+
+/** The `fields` argument: a map of field name to value, checked later against the board's fields. */
+function readFieldMap(args: Record<string, unknown>): Record<string, unknown> | undefined {
+  const value = args.fields
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new McpToolError('"fields" must be an object of field name to value.')
+  }
+  return value as Record<string, unknown>
 }
 
 // ─── shapes ───────────────────────────────────────────────────────────────────
@@ -184,6 +196,14 @@ async function commentCounts(taskIds: string[]): Promise<Map<string, number>> {
     .groupBy(taskComments.taskId)
 
   return new Map(rows.map(row => [row.taskId, Number(row.total)]))
+}
+
+/** A task's custom field values by field name, left out when it has none. */
+async function describedFields(board: Project, task: ProjectTask) {
+  const fields = await listFields(board.id)
+  if (!fields.length) return {}
+  const described = describeFieldValues(fields, (await loadFieldValues([task.id]))[task.id])
+  return Object.keys(described).length ? { fields: described } : {}
 }
 
 /** Dates, assignee and the done mark, for the tasks that have them. */
@@ -243,6 +263,7 @@ function taskCard(task: ProjectTask, options: {
   column?: string
   board?: string
   people?: Map<string, string>
+  fields?: Record<string, string | number>
 } = {}) {
   const detail = options.detail ?? 'summary'
   const terms = options.terms ?? []
@@ -255,6 +276,7 @@ function taskCard(task: ProjectTask, options: {
     labels: task.tags,
     // Like the update count, a field nobody has filled in is left out.
     ...taskSchedule(task, options.people),
+    ...(options.fields && Object.keys(options.fields).length ? { fields: options.fields } : {}),
     ...(detail === 'titles'
       ? {}
       : detail === 'full'
@@ -294,6 +316,7 @@ async function taskDetail(task: ProjectTask, board: Project) {
     title: task.title,
     labels: task.tags,
     ...taskSchedule(task, await peopleNames(board)),
+    ...await describedFields(board, task),
     description: task.description ? htmlToMarkdown(task.description) : '',
     createdAt: new Date(task.createdAt).toISOString(),
     updatedAt: new Date(task.updatedAt).toISOString(),
@@ -495,6 +518,8 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       })
       const counts = await commentCounts(grouped.flatMap(group => group.shown.map(task => task.id)))
       const people = await peopleNames(board)
+      const fieldDefs = await listFields(board.id)
+      const fieldValues = fieldDefs.length ? await loadFieldValues(grouped.flatMap(group => group.shown.map(task => task.id))) : {}
 
       return {
         id: board.id,
@@ -513,7 +538,12 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
           name: column.name,
           taskCount: total,
           ...(total > shown.length ? { omitted: total - shown.length } : {}),
-          tasks: shown.map(task => taskCard(task, { detail, updates: counts.get(task.id), people }))
+          tasks: shown.map(task => taskCard(task, {
+            detail,
+            updates: counts.get(task.id),
+            people,
+            fields: describeFieldValues(fieldDefs, fieldValues[task.id])
+          }))
         }))
       }
     }
@@ -976,6 +1006,10 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       const markdown = optionalString(args, 'description') ?? ''
       const labels = normalizeLabels(optionalStringArray(args, 'labels') ?? [])
       const fields = await readTaskFields(args, board)
+      // Checked before the task exists, so a bad value does not leave a half-made one.
+      const fieldMap = readFieldMap(args)
+      const fieldDefs = fieldMap ? await listFields(board.id) : []
+      if (fieldMap) asToolError(() => checkFieldValues(fieldDefs, fieldMap))
       const now = Date.now()
 
       const [task] = await db.insert(projectTasks).values({
@@ -991,10 +1025,15 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         updatedAt: now
       }).returning()
 
+      const storedValues = fieldMap ? await asToolErrorAsync(() => setFieldValues(task!.id, fieldDefs, fieldMap)) : undefined
       await touchBoard(board.id)
       // The caller wrote the description; echoing it back with an empty update
       // thread teaches it nothing. The ids and the card are the useful receipt.
-      return { created: true, board: { id: board.id, name: board.name }, task: taskCard(task!, { column: column.name, people: await peopleNames(board) }) }
+      return {
+        created: true,
+        board: { id: board.id, name: board.name },
+        task: taskCard(task!, { column: column.name, people: await peopleNames(board), fields: describeFieldValues(fieldDefs, storedValues) })
+      }
     }
   },
   {
@@ -1020,10 +1059,14 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       const markdown = optionalString(args, 'description')
       const labels = optionalStringArray(args, 'labels')
       const fields = await readTaskFields(args, board, task)
+      const fieldMap = readFieldMap(args)
 
-      if (title === undefined && markdown === undefined && labels === undefined && !Object.keys(fields).length) {
-        throw new McpToolError('Pass at least one of "title", "description", "labels", "dueOn", "startOn", "assignee" or "completed".')
+      if (title === undefined && markdown === undefined && labels === undefined && !Object.keys(fields).length && !fieldMap) {
+        throw new McpToolError('Pass at least one of "title", "description", "labels", "dueOn", "startOn", "assignee", "completed" or "fields".')
       }
+      // Checked before anything is saved, so a bad value changes nothing.
+      const fieldDefs = fieldMap ? await listFields(board.id) : []
+      if (fieldMap) asToolError(() => checkFieldValues(fieldDefs, fieldMap))
 
       const [updated] = await db
         .update(projectTasks)
@@ -1037,9 +1080,15 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         .where(eq(projectTasks.id, task.id))
         .returning()
 
+      if (fieldMap) await asToolErrorAsync(() => setFieldValues(task.id, fieldDefs, fieldMap))
+
       const column = await findColumn(board, task.columnId)
       await touchBoard(board.id)
-      return { updated: true, board: { id: board.id, name: board.name }, task: taskCard(updated!, { column: column.name, people: await peopleNames(board) }) }
+      return {
+        updated: true,
+        board: { id: board.id, name: board.name },
+        task: taskCard(updated!, { column: column.name, people: await peopleNames(board), fields: (await describedFields(board, updated!)).fields })
+      }
     }
   },
   {

@@ -4,11 +4,13 @@
 // catalogue all read from here.
 import type { ApiKeyScope } from '../db/schema'
 import { MCP_BOARD_TOOLS } from './mcpBoardTools'
+import { MCP_FIELD_TOOLS } from './mcpFieldTools'
 import { MCP_STATUS_TOOLS } from './mcpStatusTools'
 import type { McpToolDefinition } from './mcpToolKit'
 
 export const MCP_TOOLS: McpToolDefinition[] = [
   ...MCP_BOARD_TOOLS,
+  ...MCP_FIELD_TOOLS,
   ...MCP_STATUS_TOOLS
 ]
 

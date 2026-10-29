@@ -57,12 +57,24 @@ export function asToolError<T>(check: () => T): T {
   try {
     return check()
   } catch (error) {
-    const failure = error as { statusCode?: number, message?: string, statusMessage?: string }
-    if (failure.statusCode) {
-      throw new McpToolError(failure.message ?? failure.statusMessage ?? 'That value is not valid.')
-    }
-    throw error
+    throw toToolError(error)
   }
+}
+
+/** The same for a check that has to read the database first. */
+export async function asToolErrorAsync<T>(check: () => Promise<T>): Promise<T> {
+  try {
+    return await check()
+  } catch (error) {
+    throw toToolError(error)
+  }
+}
+
+function toToolError(error: unknown): unknown {
+  const failure = error as { statusCode?: number, message?: string, statusMessage?: string }
+  return failure.statusCode
+    ? new McpToolError(failure.message ?? failure.statusMessage ?? 'That value is not valid.')
+    : error
 }
 
 export function optionalStringArray(args: Record<string, unknown>, key: string): string[] | undefined {

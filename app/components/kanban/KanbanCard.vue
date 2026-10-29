@@ -3,6 +3,8 @@ import { formatDateMention } from '~/composables/useDateMention'
 import { relativeTime } from '~/composables/useRelativeTime'
 import { deletionSourceLabel } from '#shared/utils/board'
 import { descriptionDetails } from '~/utils/cardDetails'
+import { selectChipsOf } from '~/composables/useCustomFields'
+import { chipStyle } from '#shared/utils/colors'
 import { dueDayToMs, isOverdueDay } from '~/utils/dueDate'
 import { boardPerson, boardSubtasksOf } from '~/composables/useProjects'
 import type { ProjectTask } from '~/composables/useProjects'
@@ -10,6 +12,7 @@ import type { ProjectTask } from '~/composables/useProjects'
 const props = defineProps<{
   task: {
     id: string
+    projectId?: string
     title: string
     description: string
     tags: string[]
@@ -70,6 +73,9 @@ const internal = computed(() => props.task.visibility === 'internal')
 
 const assignee = computed(() => boardPerson(props.task.assigneeId))
 
+// A select field's choice, such as a priority, rides the card as a coloured chip.
+const fieldChips = computed(() => selectChipsOf(props.task.projectId, props.task.id))
+
 const cover = computed(() => /<img[^>]+src="(\/api\/attachments\/tasks\/[^"]+)"/.exec(props.task.description ?? '')?.[1] ?? null)
 
 // The badge counts every subtask under the task, at any nesting depth, not
@@ -84,7 +90,7 @@ const subtasksDone = computed(() => subtasks.value.filter(t => t.completedAt != 
 // One row of small print under the card, or none at all.
 const hasMeta = computed(() =>
   props.task.tags.length > 0 || !!checklist.value || due.value !== null || !!props.commentCount
-  || internal.value || !!assignee.value || subtasks.value.length > 0
+  || internal.value || !!assignee.value || subtasks.value.length > 0 || fieldChips.value.length > 0
 )
 </script>
 
@@ -159,6 +165,15 @@ const hasMeta = computed(() =>
       v-if="hasMeta"
       class="mt-2 flex items-center gap-1.5"
     >
+      <span
+        v-for="chip in fieldChips"
+        :key="chip.fieldId"
+        class="flex min-w-0 items-center truncate rounded px-1.5 py-0.5 text-[0.6875rem] font-medium ring-1 ring-inset"
+        :style="chipStyle(chip.color)"
+        data-field-chip
+      >
+        <span class="truncate">{{ chip.label }}</span>
+      </span>
       <KanbanLabelChip
         v-for="tag in task.tags.slice(0, 3)"
         :key="tag"

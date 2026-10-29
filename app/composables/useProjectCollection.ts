@@ -5,14 +5,7 @@ interface CollectionOptions {
   addAt?: 'start' | 'end'
 }
 
-// Nuxt types `$fetch` by route, which cannot say what a URL built from a
-// resource name returns; the collection states its own row type instead.
-const request = $fetch as unknown as <R>(url: string, options?: Record<string, unknown>) => Promise<R>
-
-function messageOf(error: unknown, fallback: string): string {
-  const e = error as { data?: { message?: string }, statusMessage?: string }
-  return e?.data?.message ?? e?.statusMessage ?? fallback
-}
+const request = untypedFetch
 
 /**
  * One of a project's own collections — status updates, messages, time entries —
@@ -45,7 +38,7 @@ export function useProjectCollection<T extends { id: string }>(
       const rows = await request<T[]>(url())
       if (mine === latest) items.value = rows
     } catch (e) {
-      if (mine === latest) error.value = messageOf(e, 'Could not load')
+      if (mine === latest) error.value = errorMessage(e, 'Could not load')
     } finally {
       if (mine === latest) loading.value = false
     }
@@ -67,5 +60,5 @@ export function useProjectCollection<T extends { id: string }>(
     load()
   }, { immediate: true })
 
-  return { items, loading, error, load, add, remove, messageOf }
+  return { items, loading, error, load, add, remove, messageOf: errorMessage }
 }
