@@ -16,7 +16,9 @@ const toast = useToast()
 
 const isPasskeysEnabled = computed(() => String(config.public.passkeysEnabled) === 'true')
 
+let failures = 0
 function failed(title: string, message?: string) {
+  failures++
   toast.add({ title, description: message, icon: 'i-lucide-alert-triangle', color: 'error' })
 }
 
@@ -98,6 +100,45 @@ const qrDataUrl = computed(() => pendingTotpUri.value
   : null)
 const manualSecret = computed(() => pendingTotpUri.value ? new URL(pendingTotpUri.value).searchParams.get('secret') : null)
 
+// Two-factor has one key per account, and any number of apps may hold it: "Add another
+// app" shows that key again (after the password) so each extra app can scan it.
+const extraAppUri = ref<string | null>(null)
+const qrFor = (uri: string) => `data:image/svg+xml;utf8,${encodeURIComponent(renderSVG(uri, { border: 2 }))}`
+const secretOf = (uri: string) => new URL(uri).searchParams.get('secret')
+
+// Every two-factor action asks for the password in a dialog first.
+type PasswordAction = 'enable' | 'show' | 'backup' | 'disable'
+const askFor = ref<PasswordAction | null>(null)
+const askOpen = computed({
+  get: () => askFor.value !== null,
+  set: (open) => {
+    if (!open) {
+      askFor.value = null
+      tfPassword.value = ''
+    }
+  }
+})
+const ASKS: Record<PasswordAction, { title: string, label: string }> = {
+  enable: { title: 'Set up two-factor authentication', label: 'Continue' },
+  show: { title: 'Add another authenticator app', label: 'Show key' },
+  backup: { title: 'Create new backup codes', label: 'Create codes' },
+  disable: { title: 'Turn off two-factor authentication', label: 'Turn off' }
+}
+const askTitle = computed(() => ASKS[askFor.value ?? 'enable'].title)
+const askLabel = computed(() => ASKS[askFor.value ?? 'enable'].label)
+
+async function confirmPassword() {
+  const action = askFor.value
+  if (!action || !tfPassword.value) return
+  const before = failures
+  if (action === 'enable') await startTwoFactor()
+  else if (action === 'show') await showKeyAgain()
+  else if (action === 'backup') await regenerateBackupCodes()
+  else await disableTwoFactor()
+  // A wrong password keeps the dialog open so it can be retyped.
+  if (failures === before) askOpen.value = false
+}
+
 async function loadAccounts() {
   const { data } = await authClient.listAccounts()
   hasPassword.value = (data ?? []).some(account => account.providerId === 'credential')
@@ -146,6 +187,17 @@ async function disableTwoFactor() {
     backupCodes.value = null
     tfPassword.value = ''
     toast.add({ title: 'Two-factor authentication is off', icon: 'i-lucide-shield-off', duration: 2500 })
+  } finally {
+    tfBusy.value = false
+  }
+}
+async function showKeyAgain() {
+  tfBusy.value = true
+  try {
+    const { data, error } = await authClient.twoFactor.getTotpUri({ password: tfPassword.value })
+    if (error || !data) return failed('Could not show the key', error?.message)
+    extraAppUri.value = data.totpURI
+    tfPassword.value = ''
   } finally {
     tfBusy.value = false
   }
@@ -314,7 +366,7 @@ onMounted(() => {
                 class="size-40 rounded-lg bg-white p-1"
               >
               <div class="flex-1 min-w-48 space-y-2 text-xs text-muted">
-                <p>Scan this with an authenticator app such as 1Password, Aegis or Google Authenticator, then enter the 6-digit code it shows.</p>
+                <p>Scan this with an authenticator app such as Google Authenticator, Dashlane, Bitwarden, 1Password or Aegis, then enter the 6-digit code it shows. Scan it with every app you want to use: each one shows the same codes, and you can add more later from here.</p>
                 <p>
                   Cannot scan? Enter this key instead:
                   <code class="block mt-1 font-mono text-default break-all">{{ manualSecret }}</code>
@@ -349,51 +401,109 @@ onMounted(() => {
             </div>
           </template>
 
-          <!-- Off, or on and being managed: both start with the password -->
-          <template v-else-if="hasPassword">
-            <div class="flex flex-wrap gap-2">
-              <UInput
-                v-model="tfPassword"
-                type="password"
-                placeholder="Current password"
-                autocomplete="current-password"
-                class="flex-1 min-w-48"
-                @keydown.enter="twoFactorEnabled ? undefined : startTwoFactor()"
-              />
+          <!-- Off, or on and being managed: each action asks for the password in a dialog -->
+          <div
+            v-else-if="hasPassword"
+            class="flex flex-wrap gap-2"
+          >
+            <UButton
+              v-if="!twoFactorEnabled"
+              label="Set up"
+              icon="i-lucide-qr-code"
+              size="sm"
+              color="primary"
+              @click="askFor = 'enable'"
+            />
+            <template v-else>
               <UButton
-                v-if="!twoFactorEnabled"
-                label="Set up"
+                label="Add another app"
                 icon="i-lucide-qr-code"
                 size="sm"
-                color="primary"
-                :disabled="!tfPassword"
-                :loading="tfBusy"
-                @click="startTwoFactor"
+                color="neutral"
+                variant="soft"
+                @click="askFor = 'show'"
               />
-              <template v-else>
-                <UButton
-                  label="New backup codes"
-                  icon="i-lucide-refresh-cw"
-                  size="sm"
-                  color="neutral"
-                  variant="soft"
-                  :disabled="!tfPassword"
-                  :loading="tfBusy"
-                  @click="regenerateBackupCodes"
+              <UButton
+                label="New backup codes"
+                icon="i-lucide-refresh-cw"
+                size="sm"
+                color="neutral"
+                variant="soft"
+                @click="askFor = 'backup'"
+              />
+              <UButton
+                label="Turn off"
+                icon="i-lucide-shield-off"
+                size="sm"
+                color="error"
+                variant="soft"
+                @click="askFor = 'disable'"
+              />
+            </template>
+          </div>
+
+          <UModal
+            v-model:open="askOpen"
+            :title="askTitle"
+            description="Enter your current password to continue."
+          >
+            <template #body>
+              <form
+                class="space-y-4"
+                @submit.prevent="confirmPassword"
+              >
+                <UInput
+                  v-model="tfPassword"
+                  type="password"
+                  placeholder="Current password"
+                  autocomplete="current-password"
+                  autofocus
+                  class="w-full"
                 />
-                <UButton
-                  label="Turn off"
-                  icon="i-lucide-shield-off"
-                  size="sm"
-                  color="error"
-                  variant="soft"
-                  :disabled="!tfPassword"
-                  :loading="tfBusy"
-                  @click="disableTwoFactor"
-                />
-              </template>
+                <div class="flex justify-end gap-2">
+                  <UButton
+                    label="Cancel"
+                    color="neutral"
+                    variant="ghost"
+                    @click="askOpen = false"
+                  />
+                  <UButton
+                    type="submit"
+                    :label="askLabel"
+                    :color="askFor === 'disable' ? 'error' : 'primary'"
+                    :disabled="!tfPassword"
+                    :loading="tfBusy"
+                  />
+                </div>
+              </form>
+            </template>
+          </UModal>
+
+          <!-- Another authenticator app on an account that already has two-factor: the same key -->
+          <div
+            v-if="extraAppUri && twoFactorEnabled"
+            class="flex flex-wrap items-start gap-4"
+          >
+            <img
+              :src="qrFor(extraAppUri)"
+              alt="QR code for another authenticator app"
+              class="size-40 rounded-lg bg-white p-1"
+            >
+            <div class="flex-1 min-w-48 space-y-2 text-xs text-muted">
+              <p>Scan this in each extra app (Google Authenticator, Dashlane, Bitwarden, 1Password, Aegis...). Every app that holds this key shows the same codes, and any of them signs you in.</p>
+              <p>
+                Cannot scan? Enter this key instead:
+                <code class="block mt-1 font-mono text-default break-all">{{ secretOf(extraAppUri) }}</code>
+              </p>
+              <UButton
+                label="Done"
+                size="xs"
+                color="neutral"
+                variant="soft"
+                @click="extraAppUri = null"
+              />
             </div>
-          </template>
+          </div>
 
           <!-- Backup codes, shown once after setup or regeneration -->
           <div
