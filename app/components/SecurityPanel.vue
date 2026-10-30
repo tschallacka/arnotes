@@ -32,7 +32,9 @@ const deletingPasskey = ref<string | null>(null)
 async function loadPasskeys() {
   if (!isPasskeysEnabled.value) return
   passkeysLoading.value = true
-  const { data } = await authClient.passkey.listUserPasskeys()
+  const { data, error } = await authClient.passkey.listUserPasskeys()
+  // An empty list and a failed request look the same unless the failure is said out loud.
+  if (error) failed('Could not load your passkeys', error.message)
   passkeys.value = (data ?? []) as PasskeySummary[]
   passkeysLoading.value = false
 }
