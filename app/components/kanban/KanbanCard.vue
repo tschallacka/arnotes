@@ -6,7 +6,7 @@ import { descriptionDetails } from '~/utils/cardDetails'
 import { selectChipsOf } from '~/composables/useCustomFields'
 import { chipStyle } from '#shared/utils/colors'
 import { dueDayToMs, isOverdueDay } from '~/utils/dueDate'
-import { boardGithubBadgesOf, boardPerson, boardSubtasksOf } from '~/composables/useProjects'
+import { boardGithubBadgesOf, boardPeople, boardPerson, boardSubtasksOf } from '~/composables/useProjects'
 import type { ProjectTask } from '~/composables/useProjects'
 
 const props = defineProps<{
@@ -29,11 +29,12 @@ const props = defineProps<{
   readonly?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   open: [taskId: string]
   restore: [taskId: string]
   purge: [taskId: string]
   toggleComplete: [taskId: string]
+  assign: [taskId: string, personId: string | null]
 }>()
 
 // A card in the board's trash is drawn in place, faded, so it is obvious both
@@ -72,6 +73,16 @@ const overdue = computed(() => {
 const internal = computed(() => props.task.visibility === 'internal')
 
 const assignee = computed(() => boardPerson(props.task.assigneeId))
+
+// The quick-assign menu on the card's foot, the same choices as the task panel's.
+const assignItems = computed(() => [
+  [{ label: 'Unassigned', icon: 'i-lucide-user-x', onSelect: () => emit('assign', props.task.id, null) }],
+  boardPeople().map(person => ({
+    label: person.kind === 'customer' ? `${person.name || person.email} (customer)` : person.name || person.email,
+    avatar: { src: person.image ?? undefined, alt: person.name || person.email },
+    onSelect: () => emit('assign', props.task.id, person.id)
+  }))
+])
 
 // A select field's choice, such as a priority, rides the card as a coloured chip.
 const fieldChips = computed(() => selectChipsOf(props.task.projectId, props.task.id))
@@ -113,7 +124,7 @@ const githubBadge = computed(() => {
 // One row of small print under the card, or none at all.
 const hasMeta = computed(() =>
   props.task.tags.length > 0 || !!checklist.value || due.value !== null || !!props.commentCount
-  || internal.value || !!assignee.value || subtasks.value.length > 0 || fieldChips.value.length > 0
+  || internal.value || (!!assignee.value && props.readonly) || subtasks.value.length > 0 || fieldChips.value.length > 0
   || !!githubBadge.value
 )
 </script>
@@ -288,13 +299,61 @@ const hasMeta = computed(() =>
         </span>
 
         <UAvatar
-          v-if="assignee"
+          v-if="assignee && readonly"
           :src="assignee.image ?? undefined"
           :alt="assignee.name || assignee.email"
           size="3xs"
           :title="`Assigned to ${assignee.name || assignee.email}`"
         />
       </span>
+    </div>
+
+    <!-- Asana's foot: who has it, as a button that picks someone (a dashed empty
+         person until somebody does), and an arrow that opens the task. -->
+    <div
+      v-if="!trashed && !readonly"
+      class="mt-2 flex items-center justify-between"
+    >
+      <UDropdownMenu :items="assignItems">
+        <button
+          type="button"
+          class="flex size-6 items-center justify-center rounded-full transition-colors"
+          :class="assignee ? '' : 'border border-dashed border-dimmed text-dimmed hover:border-primary hover:text-primary'"
+          :aria-label="assignee ? `Assigned to ${assignee.name || assignee.email}, change` : 'Assign to someone'"
+          :title="assignee ? `Assigned to ${assignee.name || assignee.email}` : 'Assign to someone'"
+          data-card-assign
+          @click.stop
+          @keydown.enter.stop
+          @keydown.space.stop
+        >
+          <UAvatar
+            v-if="assignee"
+            :src="assignee.image ?? undefined"
+            :alt="assignee.name || assignee.email"
+            size="xs"
+          />
+          <UIcon
+            v-else
+            name="i-lucide-user"
+            class="size-3.5"
+          />
+        </button>
+      </UDropdownMenu>
+      <button
+        type="button"
+        class="flex size-6 items-center justify-center rounded-md text-dimmed opacity-0 transition-opacity hover:bg-elevated hover:text-default focus:opacity-100 group-hover:opacity-100"
+        aria-label="Open task"
+        title="Open task"
+        data-card-open
+        @click.stop="$emit('open', task.id)"
+        @keydown.enter.stop
+        @keydown.space.stop
+      >
+        <UIcon
+          name="i-lucide-chevron-right"
+          class="size-4"
+        />
+      </button>
     </div>
 
     <div

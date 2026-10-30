@@ -226,6 +226,11 @@ export function boardPerson(id: string | null | undefined): ProjectPerson | null
   return id ? _peopleById.value.get(id) ?? null : null
 }
 
+/** Everyone the open board's tasks can be assigned to, for a card's quick-assign menu. */
+export function boardPeople(): ProjectPerson[] {
+  return _people.value
+}
+
 // Search over projects and tasks; owned by the init plugin.
 type ProjectSearchDoc = { id: string, type: 'project' | 'task', name: string, title: string, descriptionText: string }
 let _search: MiniSearch<ProjectSearchDoc> | null = null

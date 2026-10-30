@@ -44,6 +44,14 @@ async function onToggleComplete(taskId: string) {
   }
 }
 
+async function onAssign(taskId: string, personId: string | null) {
+  try {
+    await updateTask(taskId, { assigneeId: personId })
+  } catch {
+    toast.add({ title: 'Could not change the assignee', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
 // ─── Drag & drop ────────────────────────────────────────────
 
 // A finger on a card means "scroll this column" far more often than it means
@@ -801,6 +809,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onBoardKeydown))
             :readonly="isCustomerView"
             @open="emit('openTask', $event)"
             @toggle-complete="onToggleComplete"
+            @assign="onAssign"
             @restore="onRestoreTask"
             @purge="askPurgeTask"
           />
@@ -843,7 +852,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onBoardKeydown))
             name="i-lucide-plus"
             class="size-4"
           />
-          New task
+          Add task
         </button>
       </div>
     </section>
