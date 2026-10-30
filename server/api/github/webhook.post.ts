@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { createError, defineEventHandler, getHeader, readRawBody, setResponseStatus } from 'h3'
 import { refreshForEvent } from '../../utils/githubSync'
 
+const MAX_BODY_BYTES = 2 * 1024 * 1024
+
 // The events that can change what a link shows. Others are accepted and ignored.
 const HANDLED_EVENTS = new Set(['issues', 'pull_request', 'check_run', 'workflow_run'])
 
@@ -11,8 +13,13 @@ export default defineEventHandler(async (event) => {
   const secret = process.env.GITHUB_WEBHOOK_SECRET?.trim()
   if (!secret) throw createError({ statusCode: 503, message: 'GitHub webhooks are not set up on this server' })
 
+  // Anyone can reach this route, so its body is bounded before it is read. The events
+  // that matter are a few hundred kilobytes at most.
+  if (Number(getHeader(event, 'content-length') ?? 0) > MAX_BODY_BYTES) {
+    throw createError({ statusCode: 413, message: 'The webhook body is too large' })
+  }
   const raw = await readRawBody(event, false)
-  if (!raw) throw createError({ statusCode: 401, message: 'Signature does not match' })
+  if (!raw || raw.length > MAX_BODY_BYTES) throw createError({ statusCode: raw ? 413 : 401, message: raw ? 'The webhook body is too large' : 'Signature does not match' })
 
   const presented = Buffer.from(getHeader(event, 'x-hub-signature-256') ?? '')
   const expected = Buffer.from(`sha256=${createHmac('sha256', secret).update(raw).digest('hex')}`)

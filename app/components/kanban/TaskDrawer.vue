@@ -987,6 +987,12 @@ const menuItems = computed(() => [[
             />
           </div>
 
+          <KanbanTaskGithub
+            v-if="shownTask"
+            :task-id="shownTask.id"
+            :readonly="readonly"
+          />
+
           <!-- Description: the rich-text editor, bounded so it keeps its own scroll -->
           <div class="flex min-h-0 flex-1 flex-col border-t border-default">
             <div

@@ -33,7 +33,14 @@ const NOT_STAFF = 'Linking and unlinking GitHub items is for the team; a custome
 async function view(link: Pick<GithubLink, 'id' | 'kind' | 'owner' | 'repo' | 'ref' | 'url' | 'visibility'>, force: boolean): Promise<TaskGithubLink> {
   const base = { id: link.id, kind: link.kind, owner: link.owner, repo: link.repo, ref: link.ref, url: link.url, visibility: link.visibility }
   try {
-    return { ...base, ...(await syncLink(link, { force })) }
+    const result = await syncLink(link, { force })
+    // A pull request pasted as owner/repo#N is stored as what it is from now on.
+    let url = base.url
+    if (result.kind && result.kind !== link.kind) {
+      url = `https://github.com/${link.owner}/${link.repo}/${result.kind === 'pull' ? 'pull' : 'issues'}/${link.ref}`
+      await db.update(githubLinks).set({ kind: result.kind, url }).where(eq(githubLinks.id, link.id))
+    }
+    return { ...base, ...result, kind: result.kind ?? base.kind, url }
   } catch {
     return { ...base, data: null, error: 'unavailable', message: UNAVAILABLE, fetchedAt: null, nextRetryAt: null }
   }

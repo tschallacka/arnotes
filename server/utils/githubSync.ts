@@ -121,6 +121,8 @@ export interface RunData {
 export type LinkData = IssueData | PullDetails | BranchData | RunData
 
 export interface SyncResult {
+/** Set when what the link points at turned out to be another kind (a pull request found through issue syntax). */
+  kind?: LinkKind
   /** The data we have, fresh or last good. Null when there is nothing to show. */
   data: LinkData | null
   /** What went wrong with the latest attempt, or null when everything is fresh. */
@@ -258,6 +260,7 @@ interface RawIssue {
   created_at: string
   updated_at: string
   closed_at?: string | null
+  pull_request?: unknown
 }
 interface RawComment { user?: RawUser, body?: string | null, created_at: string, html_url: string }
 interface RawSearchPull {
@@ -372,6 +375,10 @@ async function syncIssue(link: LinkRef, force: boolean): Promise<SyncResult> {
   const n = link.ref
   const issue = await fetchPiece<RawIssue>('issue', keyFor(link, 'issue'), `${base}/issues/${n}`, force)
   if (!issue.body) return finish(null, [issue])
+
+  // GitHub's issues endpoint answers for pull requests too (with a pull_request key), so
+  // `owner/repo#45` may be a pull request. Show it as one, with its checks and branch.
+  if (issue.body.pull_request) return { ...(await syncPull({ ...link, kind: 'pull' }, force)), kind: 'pull' }
 
   const raw = issue.body
   const count = raw.comments ?? 0

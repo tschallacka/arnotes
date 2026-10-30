@@ -131,6 +131,8 @@ interface BoardPayload {
   tasks: ProjectTask[]
   subtasks?: ProjectTask[]
   commentCounts: Record<string, number>
+  // GitHub summaries per task, for the cards' badges. Only links the viewer may see.
+  githubBadges?: Record<string, GithubBadge[]>
   // The project's custom fields and each task's values. Staff only; a
   // contact's board carries empty ones.
   fields?: ProjectField[]
@@ -141,6 +143,15 @@ interface BoardPayload {
   trashedCount: number
 }
 
+// One GitHub item on a task, as the card shows it. Built by the board endpoint.
+export interface GithubBadge {
+  kind: 'issue' | 'pull' | 'branch' | 'workflow_run'
+  ref: string
+  state: string | null
+  title: string | null
+  checks: string | null
+}
+
 // Module-level singleton state.
 const _projects = ref<Project[]>([])
 const _allTasks = ref<TaskSearchRow[]>([])
@@ -149,6 +160,8 @@ const _board = ref<{ columns: ProjectColumn[], tasks: ProjectTask[] } | null>(nu
 // Update counts live beside the board: task PUT responses do not carry them, so
 // folding them into the task would wipe the badge on every edit.
 const _commentCounts = ref<Record<string, number>>({})
+// The open board's GitHub badges, from the board endpoint. Read by each card.
+const _githubBadges = ref<Record<string, GithubBadge[]>>({})
 // The open board's subtasks. Kept beside the cards rather than among them, so
 // nothing that walks the board's tasks has to know they exist.
 const _subtasks = ref<ProjectTask[]>([])
@@ -204,6 +217,11 @@ export function boardSubtasksOf(taskId: string): ProjectTask[] {
   return _subtasksByParent.value.get(taskId) ?? []
 }
 
+/** The GitHub badges of a task on the open board: none when it has no visible link. */
+export function boardGithubBadgesOf(taskId: string): GithubBadge[] {
+  return _githubBadges.value[taskId] ?? []
+}
+
 export function boardPerson(id: string | null | undefined): ProjectPerson | null {
   return id ? _peopleById.value.get(id) ?? null : null
 }
@@ -226,6 +244,7 @@ const _boardCache = new Map<string, {
   subtasks: ProjectTask[]
   people: ProjectPerson[]
   commentCounts: Record<string, number>
+  githubBadges: Record<string, GithubBadge[]>
 }>()
 
 function cacheBoard(projectId: string) {
@@ -236,7 +255,8 @@ function cacheBoard(projectId: string) {
     ..._board.value,
     subtasks: _subtasks.value,
     people: _people.value,
-    commentCounts: _commentCounts.value
+    commentCounts: _commentCounts.value,
+    githubBadges: _githubBadges.value
   })
   while (_boardCache.size > BOARD_CACHE_SIZE) _boardCache.delete(_boardCache.keys().next().value!)
 }
@@ -438,6 +458,7 @@ export function useProjects() {
     _subtasks.value = []
     _people.value = []
     _commentCounts.value = {}
+    _githubBadges.value = {}
     _activeTags.value = []
     _showTrashed.value = false
     _trashedCount.value = 0
@@ -505,6 +526,7 @@ export function useProjects() {
       _subtasks.value = []
       _people.value = []
       _commentCounts.value = {}
+      _githubBadges.value = {}
     }
   }
 
@@ -551,6 +573,7 @@ export function useProjects() {
         _subtasks.value = cached?.subtasks ?? []
         _people.value = cached?.people ?? []
         _commentCounts.value = cached?.commentCounts ?? {}
+        _githubBadges.value = cached?.githubBadges ?? {}
         _trashedCount.value = 0
       }
       _activeProjectId.value = id
@@ -565,6 +588,7 @@ export function useProjects() {
         _subtasks.value = board.subtasks ?? []
         _people.value = people
         _commentCounts.value = board.commentCounts ?? {}
+        _githubBadges.value = board.githubBadges ?? {}
         _trashedCount.value = board.trashedCount ?? 0
         ingestBoardFields(id, board.fields ?? [], board.fieldValues ?? {})
       }
@@ -725,6 +749,7 @@ export function useProjects() {
         _board.value = { columns: board.columns, tasks: reconcileTasks(_board.value?.tasks, board.tasks) }
         _subtasks.value = board.subtasks ?? []
         _commentCounts.value = board.commentCounts ?? {}
+        _githubBadges.value = board.githubBadges ?? {}
         _trashedCount.value = board.trashedCount ?? 0
         ingestBoardFields(projectId, board.fields ?? [], board.fieldValues ?? {})
       }

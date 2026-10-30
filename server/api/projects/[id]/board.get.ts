@@ -4,6 +4,7 @@ import { and, eq, asc, inArray, count, isNull, isNotNull } from 'drizzle-orm'
 import { requireProject } from '../../../utils/projects'
 import { commentVisibilityFilter, taskVisibilityFilter } from '../../../utils/auth-helpers'
 import { listFields, loadFieldValues } from '../../../utils/customFields'
+import { githubBadgesForBoard } from '../../../utils/githubBadges'
 
 // Full board in one payload: columns ordered, tasks grouped by column, and the
 // per-task update count the cards render as a badge.
@@ -105,6 +106,9 @@ export default defineEventHandler(async (event) => {
   const fields = isCustomer ? [] : await listFields(id)
   const fieldValues = fields.length ? await loadFieldValues([...tasks, ...subtasks].map(t => t.id)) : {}
 
+  // Cards' GitHub badges, from the cache only (see githubBadges.ts); the board never calls GitHub.
+  const githubBadges = await githubBadgesForBoard(id, [...tasks, ...subtasks].map(t => t.id), project.audience)
+
   return {
     audience: project.audience,
     columns,
@@ -112,6 +116,7 @@ export default defineEventHandler(async (event) => {
     subtasks,
     fields,
     fieldValues,
+    githubBadges,
     commentCounts: Object.fromEntries(counts.map(c => [c.taskId, Number(c.total)])),
     trashedCount
   }

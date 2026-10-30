@@ -6,7 +6,7 @@ import { descriptionDetails } from '~/utils/cardDetails'
 import { selectChipsOf } from '~/composables/useCustomFields'
 import { chipStyle } from '#shared/utils/colors'
 import { dueDayToMs, isOverdueDay } from '~/utils/dueDate'
-import { boardPerson, boardSubtasksOf } from '~/composables/useProjects'
+import { boardGithubBadgesOf, boardPerson, boardSubtasksOf } from '~/composables/useProjects'
 import type { ProjectTask } from '~/composables/useProjects'
 
 const props = defineProps<{
@@ -87,10 +87,34 @@ function allSubtasks(taskId: string): ProjectTask[] {
 const subtasks = computed(() => allSubtasks(props.task.id))
 const subtasksDone = computed(() => subtasks.value.filter(t => t.completedAt != null).length)
 
+// The first GitHub item the viewer may see, drawn as "#45 merged, checks passing".
+// The board sends only visible links, so a customer never gets an internal one.
+const githubBadge = computed(() => {
+  const badge = boardGithubBadgesOf(props.task.id)[0]
+  if (!badge) return null
+  const icon = {
+    issue: 'i-lucide-circle-dot',
+    pull: 'i-lucide-git-pull-request',
+    branch: 'i-lucide-git-branch',
+    workflow_run: 'i-lucide-play'
+  }[badge.kind]
+  let label = badge.kind === 'branch'
+    ? `${badge.title ?? badge.ref}${badge.state ? `, ${badge.state}` : ''}`
+    : badge.kind === 'workflow_run'
+      ? `run ${badge.ref}${badge.state ? ` ${badge.state}` : ''}`
+      : `#${badge.ref}${badge.state ? ` ${badge.state}` : ''}`
+  if (badge.checks) label += `, checks ${badge.checks}`
+  const checksTone = badge.checks === 'failing'
+    ? 'text-error'
+    : badge.checks === 'running' ? 'text-warning' : badge.checks === 'passing' ? 'text-success' : ''
+  return { icon, label, checksTone, title: badge.title }
+})
+
 // One row of small print under the card, or none at all.
 const hasMeta = computed(() =>
   props.task.tags.length > 0 || !!checklist.value || due.value !== null || !!props.commentCount
   || internal.value || !!assignee.value || subtasks.value.length > 0 || fieldChips.value.length > 0
+  || !!githubBadge.value
 )
 </script>
 
@@ -189,6 +213,20 @@ const hasMeta = computed(() =>
       </span>
 
       <span class="ml-auto flex shrink-0 items-center gap-2 text-[0.6875rem] text-dimmed">
+        <span
+          v-if="githubBadge"
+          class="flex min-w-0 items-center gap-1"
+          :class="githubBadge.checksTone"
+          :title="githubBadge.title ?? undefined"
+          data-github-badge
+        >
+          <UIcon
+            :name="githubBadge.icon"
+            class="size-3 shrink-0"
+          />
+          <span class="truncate">{{ githubBadge.label }}</span>
+        </span>
+
         <span
           v-if="internal"
           class="flex items-center gap-1 text-warning"

@@ -177,6 +177,11 @@ const counts = computed(() => {
           Saved
         </p>
 
+        <KanbanProjectGithubSettings
+          v-if="isStaff"
+          :project-id="projectId"
+        />
+
         <h2 class="mt-6 text-lg font-semibold text-default">
           Status updates
         </h2>
