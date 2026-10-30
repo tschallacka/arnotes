@@ -73,6 +73,8 @@ const WORKSPACE_LINKS = [
   { to: '/projects/inbox', label: 'Inbox', icon: 'i-lucide-inbox' },
   { to: '/projects/my-tasks', label: 'My tasks', icon: 'i-lucide-circle-check' },
   { to: '/projects/browse', label: 'Browse projects', icon: 'i-lucide-folder-search' },
+  { to: '/projects/goals', label: 'Goals', icon: 'i-lucide-target' },
+  { to: '/projects/portfolios', label: 'Portfolios', icon: 'i-lucide-layout-grid' },
   { to: '/projects/timesheet', label: 'Timesheet', icon: 'i-lucide-clock' },
   { to: '/projects/profile', label: 'Profile', icon: 'i-lucide-user-round' }
 ]

@@ -10,6 +10,7 @@ const GROUPS: { title: string, match: (tool: McpToolDefinition) => boolean }[] =
   { title: 'Boards, columns and tasks', match: tool => /^(list_boards|get_board|get_task|search_tasks|list_task_labels|create_board|update_board|(create|update|delete|restore)_(column|task)|move_task)$/.test(tool.name) },
   { title: 'My tasks and my inbox', match: tool => /^(my_tasks|list_notifications|mark_notifications_read)$/.test(tool.name) },
   { title: 'Custom fields', match: tool => /_fields?$/.test(tool.name) },
+  { title: 'Goals and portfolios', match: tool => /_(goals?|portfolios?)$/.test(tool.name) },
   { title: 'Status updates', match: tool => /status_update/.test(tool.name) },
   { title: 'Messages', match: tool => /message/.test(tool.name) && !/notification/.test(tool.name) },
   { title: 'Time', match: tool => /time$/.test(tool.name) }

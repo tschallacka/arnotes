@@ -416,6 +416,70 @@ export const notificationPreferences = pgTable('notification_preferences', {
   browser: boolean('browser').notNull().default(false)
 })
 
+// Goals and portfolios sit above projects, for the team that runs them. Like
+// projects they belong to a workspace: a team, or one person's own space.
+// A goal says what the work is for; its progress is typed in, or read from the
+// projects linked to it. Goals can nest.
+export const goals = pgTable(
+  'goals',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    teamId: text('team_id').references(() => organization.id, { onDelete: 'cascade' }),
+    ownerId: text('owner_id').references(() => user.id, { onDelete: 'set null' }),
+    parentId: text('parent_id').references((): AnyPgColumn => goals.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    // on_track, at_risk, off_track, achieved or dropped; NULL = not set.
+    status: text('status'),
+    // 0-100, typed in; ignored while progressFromProjects is on.
+    progress: integer('progress').notNull().default(0),
+    progressFromProjects: boolean('progress_from_projects').notNull().default(false),
+    dueOn: text('due_on'),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+  },
+  table => [index('goals_team_id_idx').on(table.teamId), index('goals_user_id_idx').on(table.userId)]
+)
+
+export type Goal = typeof goals.$inferSelect
+
+export const goalProjects = pgTable(
+  'goal_projects',
+  {
+    goalId: text('goal_id').notNull().references(() => goals.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' })
+  },
+  table => [primaryKey({ columns: [table.goalId, table.projectId] })]
+)
+
+// A named set of projects, read together: each one's health and how much of it
+// is done.
+export const portfolios = pgTable(
+  'portfolios',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    teamId: text('team_id').references(() => organization.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+  },
+  table => [index('portfolios_team_id_idx').on(table.teamId), index('portfolios_user_id_idx').on(table.userId)]
+)
+
+export type Portfolio = typeof portfolios.$inferSelect
+
+export const portfolioProjects = pgTable(
+  'portfolio_projects',
+  {
+    portfolioId: text('portfolio_id').notNull().references(() => portfolios.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' })
+  },
+  table => [primaryKey({ columns: [table.portfolioId, table.projectId] })]
+)
+
 // One row for each browser or device that said yes to Web Push. The endpoint is
 // the push service's address for that device; the two keys are what a message to
 // it is encrypted with. A device the push service reports gone is deleted.
