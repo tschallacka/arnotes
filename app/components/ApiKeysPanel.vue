@@ -50,7 +50,7 @@ const creating = ref(false)
 // The key itself only exists in this response — once it is dismissed it is gone.
 const issuedToken = ref<string | null>(null)
 const copied = ref(false)
-
+const commandCopied = ref(false)
 const scopes = computed(() => PERMISSIONS.filter(p => granted.value[p.scope]).map(p => p.scope))
 
 const canCreate = computed(() => newName.value.trim().length > 0 && scopes.value.length > 0)
@@ -73,6 +73,7 @@ async function createKey() {
     })
     issuedToken.value = response.token
     copied.value = false
+    commandCopied.value = false
     newName.value = ''
     await refresh()
   } catch (e) {
@@ -90,6 +91,22 @@ async function copyToken() {
     toast.add({ title: 'Key copied', icon: 'i-lucide-check', duration: 2000 })
   } catch {
     toast.add({ title: 'Could not copy — select the key and copy it manually', icon: 'i-lucide-alert-triangle', color: 'error' })
+  }
+}
+
+// The whole `claude mcp add` line with the new key in it, so nothing is typed by hand.
+const claudeCommand = computed(() =>
+  `claude mcp add --transport http taskmanager ${window.location.origin}/api/mcp --header "Authorization: Bearer ${issuedToken.value ?? ''}"`
+)
+
+async function copyCommand() {
+  if (!issuedToken.value) return
+  try {
+    await navigator.clipboard.writeText(claudeCommand.value)
+    commandCopied.value = true
+    toast.add({ title: 'Command copied', icon: 'i-lucide-check', duration: 2000 })
+  } catch {
+    toast.add({ title: 'Could not copy — select the command and copy it manually', icon: 'i-lucide-alert-triangle', color: 'error' })
   }
 }
 
@@ -214,6 +231,20 @@ function expiryLabel(key: ApiKeySummary): string {
                 size="sm"
                 aria-label="Dismiss key"
                 @click="issuedToken = null"
+              />
+            </div>
+            <p class="text-xs text-muted pt-1">
+              Or connect Claude Code in one go: run this command with the key already in it.
+            </p>
+            <div class="flex gap-2">
+              <pre class="flex-1 min-w-0 text-xs font-mono bg-default border border-default rounded-md px-3 py-2 overflow-x-auto">{{ claudeCommand }}</pre>
+              <UButton
+                :icon="commandCopied ? 'i-lucide-check' : 'i-lucide-copy'"
+                :label="commandCopied ? 'Copied' : 'Copy command'"
+                color="neutral"
+                variant="soft"
+                size="sm"
+                @click="copyCommand"
               />
             </div>
           </div>

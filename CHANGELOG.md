@@ -4,6 +4,7 @@ All notable changes to Arnotes are documented in this file.
 
 ## Unreleased
 
+- A new API key now comes with the whole `claude mcp add` command, key and server address filled in, with its own Copy button
 - Two-factor settings ask for your password in a dialog (Set up, Add another app, New backup codes, Turn off); a wrong password keeps the dialog open. "Add another app" shows the key again so you can scan it in more authenticator apps, such as Google Authenticator, Dashlane or Bitwarden: every app holding the key shows the same codes
 - Maintenance mode for deploys. While `MAINTENANCE_MODE` is on, or the file `maintenance.on` exists (no restart needed), every request gets a 503 with Retry-After: a small self-refreshing page in the browser, JSON for the API and the agent endpoint. `/api/health` stays up, and due-date rules pause
 - A project has a Settings page, for the team only: General (name, description, status), Repositories (the GitHub defaults, moved from the Overview), Rules and Custom fields (moved from the Overview). The section is kept in the address, so a reload stays on it. A customer's contact has no Settings tab. Under the hood: a project can be archived (`archived_at`), and the database gains `project_github_repos`, `project_rules` and `project_rule_runs` for what follows; a linked pull request that is merged, closed or starts failing its checks is now noticed when it is synced, ready for rules to act on
