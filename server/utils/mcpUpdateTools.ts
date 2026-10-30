@@ -4,6 +4,7 @@
 import { db } from '../db'
 import { taskComments, VISIBILITIES } from '../db/schema'
 import type { Visibility } from '../db/schema'
+import { audienceOf } from './mcpAccess'
 import { findTask } from './mcpBoardTools'
 import { McpToolError, newId, optionalString, requireString } from './mcpToolKit'
 import type { McpToolDefinition } from './mcpToolKit'
@@ -34,7 +35,7 @@ export const MCP_UPDATE_TOOLS: McpToolDefinition[] = [
       if (asked !== undefined && !VISIBILITIES.includes(asked as Visibility)) {
         throw new McpToolError('Visibility is "internal" or "customer".')
       }
-      const visibility: Visibility = board.audience === 'customer' ? 'customer' : ((asked as Visibility | undefined) ?? 'internal')
+      const visibility: Visibility = audienceOf(context, board) === 'customer' ? 'customer' : ((asked as Visibility | undefined) ?? 'internal')
 
       const [comment] = await db.insert(taskComments).values({
         id: newId(),
