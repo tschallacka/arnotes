@@ -62,7 +62,8 @@ async function addLink() {
     await add(input, visibility.value)
     draft.value = ''
   } catch (e) {
-    addError.value = errorMessage(e, 'Could not link that')
+    // An answer with words is shown as it is; none at all means the request itself failed.
+    addError.value = errorMessage(e, 'The server did not answer, so that link was not added. Try again in a moment')
   } finally {
     adding.value = false
   }
@@ -236,7 +237,8 @@ function reviewText(state: string): string {
       {{ readonly ? 'Nothing on GitHub is shared with the customer.' : 'No GitHub links yet.' }}
     </p>
 
-    <ul class="space-y-2">
+    <!-- Many links must not push the description out of the drawer: the list scrolls on its own. -->
+    <ul class="max-h-[45vh] space-y-2 overflow-y-auto pr-1">
       <li
         v-for="link in links"
         :key="link.id"
@@ -256,7 +258,7 @@ function reviewText(state: string): string {
           </UBadge>
           <div class="min-w-0 flex-1">
             <p class="font-medium text-default">
-              <span class="text-muted">{{ kindText(link.kind, link) }}</span>
+              <span class="mr-1.5 text-muted">{{ kindText(link.kind, link) }}</span>
               <template v-if="issueOf(link)">
                 {{ issueOf(link)!.issue.title }}
               </template>
