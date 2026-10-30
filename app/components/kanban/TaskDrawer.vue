@@ -2,7 +2,7 @@
 import { columnDotAttrs } from '~/utils/tagColors'
 import { format } from 'date-fns'
 import { relativeTime } from '~/composables/useRelativeTime'
-import type { TaskComment, Visibility, ProjectTask } from '~/composables/useProjects'
+import type { TaskActivityItem, TaskComment, Visibility, ProjectTask } from '~/composables/useProjects'
 import { dueDayToMs, isOverdueDay } from '~/utils/dueDate'
 
 interface Task {
@@ -38,6 +38,7 @@ const {
   moveTask,
   deleteTask,
   comments,
+  activity,
   loadComments,
   addComment,
   editComment,
@@ -362,6 +363,58 @@ function updateAuthor(comment: TaskComment) {
 
 function updateSourceLabel(comment: TaskComment) {
   return comment.createdVia === 'mcp' ? 'MCP' : 'AI'
+}
+
+// The thread and the log of what happened to the task, in one run, oldest first.
+type StreamEntry
+  = | { key: string, at: number, comment: TaskComment, activity?: undefined }
+    | { key: string, at: number, comment?: undefined, activity: TaskActivityItem }
+
+const stream = computed<StreamEntry[]>(() => [
+  ...comments.value.map(comment => ({ key: `c-${comment.id}`, at: comment.createdAt, comment })),
+  ...activity.value.map(item => ({ key: `a-${item.id}`, at: item.createdAt, activity: item }))
+].sort((a, b) => a.at - b.at))
+
+const ACTIVITY_ICONS: Record<TaskActivityItem['kind'], string> = {
+  created: 'i-lucide-circle-plus',
+  completed: 'i-lucide-circle-check',
+  reopened: 'i-lucide-rotate-ccw',
+  moved: 'i-lucide-arrow-right',
+  assigned: 'i-lucide-user-plus',
+  unassigned: 'i-lucide-user-minus',
+  due: 'i-lucide-calendar',
+  start: 'i-lucide-calendar-clock',
+  renamed: 'i-lucide-pencil',
+  visibility: 'i-lucide-eye'
+}
+
+function activityIcon(kind: TaskActivityItem['kind']) {
+  return ACTIVITY_ICONS[kind]
+}
+
+function activityActor(item: TaskActivityItem) {
+  return item.actorName ?? 'Someone'
+}
+
+function activityDay(day: string | null | undefined) {
+  return day ? format(dueDayToMs(day), 'MMM d, yyyy') : ''
+}
+
+function activityText(item: TaskActivityItem) {
+  const { from, to } = item.detail
+  const how = item.via === 'mcp' ? ' (via an agent)' : item.via === 'ai' ? ' (via the AI assistant)' : ''
+  switch (item.kind) {
+    case 'created': return `created this task${how}`
+    case 'completed': return `marked this task done${how}`
+    case 'reopened': return `reopened this task${how}`
+    case 'moved': return `moved this task from ${from} to ${to}${how}`
+    case 'assigned': return `assigned this task to ${to}${how}`
+    case 'unassigned': return `removed the assignee${how}`
+    case 'due': return to ? `set the due date to ${activityDay(to)}${how}` : `cleared the due date${how}`
+    case 'start': return to ? `set the start date to ${activityDay(to)}${how}` : `cleared the start date${how}`
+    case 'renamed': return `renamed this task to “${to}”${how}`
+    case 'visibility': return `made this task ${to}${how}`
+  }
 }
 
 async function scrollUpdatesToEnd() {
@@ -1002,110 +1055,137 @@ const menuItems = computed(() => [[
             No updates yet. Note where this stands — on staging, waiting on feedback, needs more work.
           </p>
 
-          <div
-            v-for="comment in comments"
-            :key="comment.id"
-            class="group/update flex w-full gap-2.5"
+          <template
+            v-for="entry in stream"
+            :key="entry.key"
           >
-            <UAvatar
-              v-if="isAgentUpdate(comment)"
-              icon="i-lucide-bot"
-              size="2xs"
-              class="mt-0.5 shrink-0"
-            />
-            <UAvatar
-              v-else
-              :alt="initials(comment.userName)"
-              size="2xs"
-              class="mt-0.5 shrink-0"
-            />
-            <div class="w-full min-w-0 flex-1">
-              <div class="flex items-baseline gap-2">
-                <span class="truncate text-xs font-medium text-default">
-                  {{ updateAuthor(comment) }}
-                </span>
-                <span
-                  v-if="isAgentUpdate(comment)"
-                  class="shrink-0 rounded px-1 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-muted ring-1 ring-inset ring-accented"
-                >
-                  {{ updateSourceLabel(comment) }}
-                </span>
-                <span
-                  class="shrink-0 text-xs text-dimmed"
-                  :title="fullDate(comment.createdAt)"
-                >
-                  {{ relativeTime(comment.createdAt) }}
-                </span>
-                <span
-                  v-if="comment.editedAt"
-                  class="shrink-0 text-xs text-dimmed"
-                  :title="`Edited ${fullDate(comment.editedAt)}`"
-                >
-                  (edited)
-                </span>
-                <!-- Contacts are never sent internal updates, so only staff see this. -->
-                <span
-                  v-if="comment.visibility === 'internal'"
-                  class="flex shrink-0 items-center gap-0.5 text-[0.6875rem] text-warning"
-                  title="Internal: the customer does not see this update"
-                >
-                  <UIcon
-                    name="i-lucide-lock"
-                    class="size-3"
-                  />
-                  Internal
-                </span>
-
-                <UDropdownMenu
-                  v-if="canChange(comment) && editingId !== comment.id"
-                  :items="commentMenu(comment)"
-                  :content="{ align: 'end', collisionPadding: 12 }"
-                >
-                  <UButton
-                    icon="i-lucide-ellipsis"
-                    size="xs"
-                    color="neutral"
-                    variant="ghost"
-                    aria-label="Update options"
-                    class="-my-1 ml-auto opacity-0 transition-opacity focus-visible:opacity-100 group-hover/update:opacity-100 data-[state=open]:opacity-100"
-                  />
-                </UDropdownMenu>
-              </div>
-
+            <template v-if="entry.comment">
               <div
-                v-if="editingId === comment.id"
-                class="mt-1 rounded-md border border-default bg-elevated/40 px-2.5 py-2"
+                v-for="comment in [entry.comment]"
+                :key="comment.id"
+                class="group/update flex w-full gap-2.5"
               >
-                <UpdateComposer
-                  :ref="setEditComposer"
-                  v-model="editDraft"
-                  placeholder="Edit the update…"
-                  @submit="saveEdit"
+                <UAvatar
+                  v-if="isAgentUpdate(comment)"
+                  icon="i-lucide-bot"
+                  size="2xs"
+                  class="mt-0.5 shrink-0"
                 />
-                <div class="mt-2 flex items-center justify-end gap-1">
-                  <span class="mr-auto text-[0.6875rem] text-dimmed">Enter to save · Esc to cancel</span>
-                  <UButton
-                    label="Cancel"
-                    size="xs"
-                    color="neutral"
-                    variant="ghost"
-                    @click="cancelEdit"
-                  />
-                  <UButton
-                    label="Save"
-                    size="xs"
-                    :disabled="!editDraft.trim()"
-                    @click="saveEdit"
+                <UAvatar
+                  v-else
+                  :alt="initials(comment.userName)"
+                  size="2xs"
+                  class="mt-0.5 shrink-0"
+                />
+                <div class="w-full min-w-0 flex-1">
+                  <div class="flex items-baseline gap-2">
+                    <span class="truncate text-xs font-medium text-default">
+                      {{ updateAuthor(comment) }}
+                    </span>
+                    <span
+                      v-if="isAgentUpdate(comment)"
+                      class="shrink-0 rounded px-1 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-muted ring-1 ring-inset ring-accented"
+                    >
+                      {{ updateSourceLabel(comment) }}
+                    </span>
+                    <span
+                      class="shrink-0 text-xs text-dimmed"
+                      :title="fullDate(comment.createdAt)"
+                    >
+                      {{ relativeTime(comment.createdAt) }}
+                    </span>
+                    <span
+                      v-if="comment.editedAt"
+                      class="shrink-0 text-xs text-dimmed"
+                      :title="`Edited ${fullDate(comment.editedAt)}`"
+                    >
+                      (edited)
+                    </span>
+                    <!-- Contacts are never sent internal updates, so only staff see this. -->
+                    <span
+                      v-if="comment.visibility === 'internal'"
+                      class="flex shrink-0 items-center gap-0.5 text-[0.6875rem] text-warning"
+                      title="Internal: the customer does not see this update"
+                    >
+                      <UIcon
+                        name="i-lucide-lock"
+                        class="size-3"
+                      />
+                      Internal
+                    </span>
+
+                    <UDropdownMenu
+                      v-if="canChange(comment) && editingId !== comment.id"
+                      :items="commentMenu(comment)"
+                      :content="{ align: 'end', collisionPadding: 12 }"
+                    >
+                      <UButton
+                        icon="i-lucide-ellipsis"
+                        size="xs"
+                        color="neutral"
+                        variant="ghost"
+                        aria-label="Update options"
+                        class="-my-1 ml-auto opacity-0 transition-opacity focus-visible:opacity-100 group-hover/update:opacity-100 data-[state=open]:opacity-100"
+                      />
+                    </UDropdownMenu>
+                  </div>
+
+                  <div
+                    v-if="editingId === comment.id"
+                    class="mt-1 rounded-md border border-default bg-elevated/40 px-2.5 py-2"
+                  >
+                    <UpdateComposer
+                      :ref="setEditComposer"
+                      v-model="editDraft"
+                      placeholder="Edit the update…"
+                      @submit="saveEdit"
+                    />
+                    <div class="mt-2 flex items-center justify-end gap-1">
+                      <span class="mr-auto text-[0.6875rem] text-dimmed">Enter to save · Esc to cancel</span>
+                      <UButton
+                        label="Cancel"
+                        size="xs"
+                        color="neutral"
+                        variant="ghost"
+                        @click="cancelEdit"
+                      />
+                      <UButton
+                        label="Save"
+                        size="xs"
+                        :disabled="!editDraft.trim()"
+                        @click="saveEdit"
+                      />
+                    </div>
+                  </div>
+                  <InlineMarkdown
+                    v-else
+                    :text="comment.body"
+                    class="text-sm leading-relaxed text-default"
                   />
                 </div>
               </div>
-              <InlineMarkdown
-                v-else
-                :text="comment.body"
-                class="text-sm leading-relaxed text-default"
-              />
+            </template>
+            <div
+              v-else
+              class="flex items-center gap-2.5 text-xs text-muted"
+              :data-activity="entry.activity.kind"
+            >
+              <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-elevated">
+                <UIcon
+                  :name="activityIcon(entry.activity.kind)"
+                  class="size-3"
+                />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="font-medium text-default">{{ activityActor(entry.activity) }}</span>
+                {{ activityText(entry.activity) }}
+              </span>
+              <span
+                class="shrink-0 text-dimmed"
+                :title="fullDate(entry.at)"
+              >{{ relativeTime(entry.at) }}</span>
             </div>
-          </div>
+          </template>
         </div>
 
         <div

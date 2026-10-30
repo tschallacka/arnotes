@@ -293,6 +293,8 @@ export const projectTasks = pgTable(
     // One person owns a task, as in Asana. Staff of the project's organisation or
     // a contact of its customer; cleared if that account goes away.
     assigneeId: text('assignee_id').references(() => user.id, { onDelete: 'set null' }),
+    // Who made it. Null for tasks that predate the log, and once that account is gone.
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
     // A calendar day, `YYYY-MM-DD`, so it means the same date in every timezone.
     // A task without one still shows the first `@date` in its description.
     dueOn: text('due_on'),
@@ -326,6 +328,29 @@ export const projectTasks = pgTable(
     // The trash view and the purge job both ask for "what is deleted here".
     index('project_tasks_deleted_at_idx').on(table.deletedAt)
   ]
+)
+
+// What happened to a task, in order, as Asana's activity log shows it: made,
+// finished, moved, rescheduled, given to someone. `detail` holds the words the
+// entry needs (names, not ids) so it still reads right after a column or a
+// person is gone.
+export const TASK_ACTIVITY_KINDS = ['created', 'completed', 'reopened', 'moved', 'assigned', 'unassigned', 'due', 'start', 'renamed', 'visibility'] as const
+export type TaskActivityKind = typeof TASK_ACTIVITY_KINDS[number]
+
+export const taskActivity = pgTable(
+  'task_activity',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull().references(() => projectTasks.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    actorId: text('actor_id').references(() => user.id, { onDelete: 'set null' }),
+    // How it was done: the app, an agent over MCP, or the AI assistant.
+    via: text('via').$type<DeletionSource>().notNull().default('ui'),
+    kind: text('kind').$type<TaskActivityKind>().notNull(),
+    detail: json('detail').$type<Record<string, string | null>>().notNull().default({}),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [index('task_activity_task_id_idx').on(table.taskId, table.createdAt)]
 )
 
 export type ProjectTask = typeof projectTasks.$inferSelect

@@ -1,4 +1,5 @@
 import { db } from '../../db'
+import { changesToTask, inboxBriefs, logActivity } from '../../utils/taskActivity'
 import { projects, projectTasks, VISIBILITIES, type Visibility } from '../../db/schema'
 import { eq } from 'drizzle-orm'
 import { requireTask, requireColumn, requireStaff, columnTasksOrdered, subtasksOrdered, positionBetween, uiDeletion, rootTaskId, isInAncestryChain } from '../../utils/projects'
@@ -109,11 +110,13 @@ export default defineEventHandler(async (event) => {
     patch.completedAt = body.completed ? (task.completedAt ?? Date.now()) : null
   }
 
-  // Who is told, and of what, once the change is saved.
-  const changes: string[] = []
-  if (body.completed !== undefined && !!body.completed !== !!task.completedAt) changes.push(body.completed ? 'Marked done' : 'Reopened')
-  if (body.dueOn !== undefined && patch.dueOn !== task.dueOn) changes.push(patch.dueOn ? `Due ${patch.dueOn}` : 'Due date cleared')
-  const tell = () => notifyTaskChange(project, task, event.context.session.user.id, changes)
+  // Once the change is saved: put what happened in the task's log, and tell the
+  // people on the task.
+  const tell = async () => {
+    const entries = await changesToTask(task, patch)
+    await logActivity(task, event.context.session.user.id, entries)
+    await notifyTaskChange(project, task, event.context.session.user.id, inboxBriefs(entries))
+  }
 
   // A subtask follows its parent's column, so it only ever moves among the
   // tasks nested somewhere under the same top-level task. Within that tree it
@@ -177,7 +180,6 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: 'That column belongs to another project' })
     }
     patch.columnId = body.columnId
-    changes.push(`Moved to ${column.name}`)
     // Filing a card somewhere deliberately overrides where it happened to come
     // from, so restoring its old column later leaves this one alone.
     patch.previousColumnId = null

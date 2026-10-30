@@ -100,6 +100,17 @@ export interface TaskComment {
   keyName?: string | null
 }
 
+// One line of a task's log: made, finished, moved, rescheduled, given to someone.
+export interface TaskActivityItem {
+  id: string
+  kind: 'created' | 'completed' | 'reopened' | 'moved' | 'assigned' | 'unassigned' | 'due' | 'start' | 'renamed' | 'visibility'
+  detail: Record<string, string | null>
+  via: DeletionSource
+  actorId: string | null
+  actorName: string | null
+  createdAt: number
+}
+
 // Lightweight row used by global search; not the full task.
 export interface TaskSearchRow {
   id: string
@@ -147,6 +158,7 @@ const _boardLoading = ref(false)
 const _ready = ref(false)
 const _comments = ref<TaskComment[]>([])
 const _commentsTaskId = ref<string | null>(null)
+const _activity = ref<TaskActivityItem[]>([])
 // Label filter for the open board. Kanban labels annotate tasks (priority,
 // workstream, …) rather than group boards, so they act as a board-level filter
 // and reset whenever another board is opened.
@@ -753,6 +765,7 @@ export function useProjects() {
     const task = await $fetch<ProjectTask>(`/api/tasks/${id}`, { method: 'PUT', headers: realtimeHeaders(), body: patch })
     upsertBoardTask(task)
     upsertSearchRow(task)
+    if (_commentsTaskId.value === id) loadActivity(id).catch(() => {})
     touchProject(task.projectId)
     return task
   }
@@ -764,6 +777,7 @@ export function useProjects() {
     })
     upsertBoardTask(task)
     upsertSearchRow(task)
+    if (_commentsTaskId.value === id) loadActivity(id).catch(() => {})
     touchProject(task.projectId)
     // The server may have spread the column's positions to make room, which
     // moves siblings this response says nothing about.
@@ -839,9 +853,17 @@ export function useProjects() {
     return res
   }
 
+  async function loadActivity(taskId: string) {
+    const rows = await $fetch<TaskActivityItem[]>(`/api/tasks/${taskId}/activity`)
+    if (_commentsTaskId.value === taskId) _activity.value = rows
+  }
+
   async function loadComments(taskId: string) {
     _commentsTaskId.value = taskId
-    const comments = await $fetch<TaskComment[]>(`/api/tasks/${taskId}/comments`)
+    const [comments] = await Promise.all([
+      $fetch<TaskComment[]>(`/api/tasks/${taskId}/comments`),
+      loadActivity(taskId).catch(() => {})
+    ])
     if (_commentsTaskId.value === taskId) {
       _comments.value = comments
       _commentCounts.value = { ..._commentCounts.value, [taskId]: comments.length }
@@ -890,6 +912,7 @@ export function useProjects() {
 
   function clearComments() {
     _comments.value = []
+    _activity.value = []
     _commentsTaskId.value = null
   }
 
@@ -955,6 +978,7 @@ export function useProjects() {
     boardColumns,
     boardLoading: _boardLoading,
     comments: _comments,
+    activity: _activity,
     commentsTaskId: _commentsTaskId,
     load,
     refresh,

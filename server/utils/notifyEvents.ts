@@ -7,7 +7,7 @@ import { notificationExcerpt, notify } from './notifications'
 import { projectPeople } from './people'
 
 type Project = { id: string, name: string, userId: string, teamId: string | null, customerId: string | null }
-type Task = { id: string, title: string, visibility: 'internal' | 'customer', assigneeId?: string | null }
+type Task = { id: string, title: string, visibility: 'internal' | 'customer', assigneeId?: string | null, createdBy?: string | null }
 
 async function nameOf(userId: string | null): Promise<string> {
   if (!userId) return 'Someone'
@@ -35,7 +35,7 @@ export async function notifyComment(project: Project, task: Task, actorId: strin
     task,
     actorId,
     type: 'comment',
-    recipients: [...(task.assigneeId ? [task.assigneeId] : []), ...writers.map(writer => writer.userId)],
+    recipients: [...new Set([...(task.assigneeId ? [task.assigneeId] : []), ...(task.createdBy ? [task.createdBy] : []), ...writers.map(writer => writer.userId)])],
     staffOnly: internal,
     title: `${await nameOf(actorId)} commented on "${task.title}"`,
     body: notificationExcerpt(body)
@@ -94,7 +94,7 @@ export async function notifyTaskChange(project: Project, task: Task, actorId: st
     task,
     actorId,
     type: 'update',
-    recipients: [...(task.assigneeId ? [task.assigneeId] : []), ...writers.map(writer => writer.userId)],
+    recipients: [...new Set([...(task.assigneeId ? [task.assigneeId] : []), ...(task.createdBy ? [task.createdBy] : []), ...writers.map(writer => writer.userId)])],
     title: `${await nameOf(actorId)} updated "${task.title}"`,
     body: changes.join(' · ')
   })
