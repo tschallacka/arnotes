@@ -137,6 +137,8 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `GITHUB_WEBHOOK_SECRET` | empty | Secret GitHub signs webhook deliveries with, checked on `POST /api/github/webhook`. The receiver answers 503 until it is set |
 | `GITHUB_ALLOWED_OWNERS` | empty | Comma-separated GitHub owners and orgs that links may point at. Empty allows any owner the token can see; set it in production, since the token can read every repository it has access to |
 | `DUE_RULES_INTERVAL_MS` | `900000` | How often the due-date rules are checked, in milliseconds (15 minutes). Testing only: ignored when `NODE_ENV` is `production` |
+| `MAINTENANCE_MODE` | empty | Set to `1`, `true`, `yes` or `on` to put the app in maintenance mode: every request is answered 503 with `Retry-After` (a small page for the browser, JSON for `/api` and the agent endpoint), except `/api/health`. Due-date rules pause too |
+| `MAINTENANCE_FILE` | `maintenance.on` | A file whose existence turns maintenance mode on with no restart: `touch maintenance.on` before a deploy, `rm maintenance.on` after. Relative to the working directory |
 | `GITHUB_API_URL` | empty | Testing only: call a local stub instead of `api.github.com`. Ignored when `NODE_ENV` is `production` |
 
 To enable Discord, set all three Discord variables and register this redirect URL in the Discord developer portal:

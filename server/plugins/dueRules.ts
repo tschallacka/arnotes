@@ -1,4 +1,5 @@
 import { sweepDueRules } from '../utils/dueRules'
+import { inMaintenance } from '../utils/maintenance'
 
 // The due-date check is a timer only: once on boot, then every 15 minutes. The rules
 // live in utils/dueRules.ts so a script can run the same sweep.
@@ -15,7 +16,8 @@ export default defineNitroPlugin(() => {
   // A slow sweep is not started again by the next tick.
   let inFlight = false
   const run = async () => {
-    if (inFlight) return
+    // Rules write to the database, which a deploy may be changing under us.
+    if (inFlight || inMaintenance()) return
     inFlight = true
     try {
       const fired = await sweepDueRules()

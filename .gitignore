@@ -1,3 +1,6 @@
+# Maintenance flag file
+maintenance.on
+
 # Nuxt dev/build outputs
 .output
 .data
