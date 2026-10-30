@@ -81,3 +81,21 @@ export async function notifyMessage(project: Project, message: { title: string, 
     body: notificationExcerpt(message.body)
   })
 }
+
+/**
+ * Something about a task changed: done, reopened, a new due date, a move. The
+ * people on it hear: its assignee and everyone who has written on it.
+ */
+export async function notifyTaskChange(project: Project, task: Task, actorId: string | null, changes: string[]) {
+  if (!changes.length) return
+  const writers = await db.select({ userId: taskComments.userId }).from(taskComments).where(eq(taskComments.taskId, task.id))
+  await notify({
+    project,
+    task,
+    actorId,
+    type: 'update',
+    recipients: [...(task.assigneeId ? [task.assigneeId] : []), ...writers.map(writer => writer.userId)],
+    title: `${await nameOf(actorId)} updated "${task.title}"`,
+    body: changes.join(' · ')
+  })
+}

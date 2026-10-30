@@ -7,7 +7,7 @@ import { removeTaskAttachments } from '../../utils/attachments'
 import { requireAssignable } from '../../utils/people'
 import { parseDueOn } from '../../utils/taskFields'
 import { listFields, setFieldValues } from '../../utils/customFields'
-import { notifyAssigned } from '../../utils/notifyEvents'
+import { notifyAssigned, notifyTaskChange } from '../../utils/notifyEvents'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -109,6 +109,12 @@ export default defineEventHandler(async (event) => {
     patch.completedAt = body.completed ? (task.completedAt ?? Date.now()) : null
   }
 
+  // Who is told, and of what, once the change is saved.
+  const changes: string[] = []
+  if (body.completed !== undefined && !!body.completed !== !!task.completedAt) changes.push(body.completed ? 'Marked done' : 'Reopened')
+  if (body.dueOn !== undefined && patch.dueOn !== task.dueOn) changes.push(patch.dueOn ? `Due ${patch.dueOn}` : 'Due date cleared')
+  const tell = () => notifyTaskChange(project, task, event.context.session.user.id, changes)
+
   // A subtask follows its parent's column, so it only ever moves among the
   // tasks nested somewhere under the same top-level task. Within that tree it
   // can also be re-nested under a different parent (indent/outdent).
@@ -156,6 +162,7 @@ export default defineEventHandler(async (event) => {
     }
     const [updated] = await db.update(projectTasks).set(patch).where(eq(projectTasks.id, id)).returning()
     await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, project.id))
+    await tell()
     await publishFromEvent(event, { type: 'board', projectId: project.id })
     return fieldValues ? { ...updated, fieldValues } : updated
   }
@@ -170,6 +177,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: 'That column belongs to another project' })
     }
     patch.columnId = body.columnId
+    changes.push(`Moved to ${column.name}`)
     // Filing a card somewhere deliberately overrides where it happened to come
     // from, so restoring its old column later leaves this one alone.
     patch.previousColumnId = null
@@ -199,6 +207,7 @@ export default defineEventHandler(async (event) => {
   }
   await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, project.id))
 
+  await tell()
   await publishFromEvent(event, { type: 'board', projectId: project.id })
   return fieldValues ? { ...updated, fieldValues } : updated
 })

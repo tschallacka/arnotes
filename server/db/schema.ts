@@ -382,7 +382,7 @@ export const taskFieldValues = pgTable(
 // names the project (and task) it points at and carries the words as they were
 // when it was sent; whether the recipient may still open it is decided when they
 // do. `emailedAt` is when a copy went out by mail, if it did.
-export const NOTIFICATION_TYPES = ['assigned', 'comment', 'message', 'reply'] as const
+export const NOTIFICATION_TYPES = ['assigned', 'comment', 'message', 'reply', 'update'] as const
 export type NotificationType = typeof NOTIFICATION_TYPES[number]
 
 export const notifications = pgTable(

@@ -3,7 +3,7 @@ import { errorMessage, untypedFetch } from '~/utils/untypedFetch'
 
 export interface NotificationItem {
   id: string
-  type: 'assigned' | 'comment' | 'message' | 'reply'
+  type: 'assigned' | 'comment' | 'message' | 'reply' | 'update'
   projectId: string
   projectName: string
   taskId: string | null

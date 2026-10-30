@@ -17,7 +17,7 @@ import { McpToolError, asToolError, asToolErrorAsync, excerpt, idFromReference, 
 import type { McpToolDefinition } from './mcpToolKit'
 import { MAX_PROJECT_DESCRIPTION, PROJECT_STATUSES, parseDueOn, parseProjectStatus } from './taskFields'
 import { projectPeople } from './people'
-import { notifyAssigned } from './notifyEvents'
+import { notifyAssigned, notifyTaskChange } from './notifyEvents'
 import { checkFieldValues, describeFieldValues, listFields, loadFieldValues, setFieldValues } from './customFields'
 
 const MAX_LABELS = 10
@@ -1105,6 +1105,10 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         .where(eq(projectTasks.id, task.id))
         .returning()
 
+      await notifyTaskChange(board, updated!, context.userId, [
+        ...('completedAt' in fields && !!fields.completedAt !== !!task.completedAt ? [fields.completedAt ? 'Marked done' : 'Reopened'] : []),
+        ...('dueOn' in fields && fields.dueOn !== task.dueOn ? [fields.dueOn ? `Due ${fields.dueOn}` : 'Due date cleared'] : [])
+      ])
       if (fields.assigneeId && fields.assigneeId !== task.assigneeId) await notifyAssigned(board, updated!, context.userId, fields.assigneeId)
       if (fieldMap) await asToolErrorAsync(() => setFieldValues(task.id, fieldDefs, fieldMap))
 
@@ -1153,6 +1157,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         .returning()
 
       await touchBoard(board.id)
+      if (column.id !== from.id) await notifyTaskChange(board, updated!, context.userId, [`Moved to ${column.name}`])
       // `board` sits at the top level because the MCP endpoint reads it to tell
       // the open browsers which board changed — without it a move only raises
       // the coarse signal, and the readers of a shared board see nothing at all.
