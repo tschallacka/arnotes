@@ -81,7 +81,87 @@ async function loadPreferences() {
   } catch { /* as above */ }
 }
 
+// ─── Web Push: a notification when no tab is open ───────────────────────────
+// This device's own subscription, kept apart from the account's preferences:
+// pushing is something one browser agrees to, not something the account is set to.
+
+export interface PushState {
+  /** This browser can do Web Push at all. */
+  supported: boolean
+  /** The server has keys to push with. */
+  enabled: boolean
+  /** This browser is subscribed and the server knows it. */
+  subscribed: boolean
+}
+
+const _push = ref<PushState>({ supported: false, enabled: false, subscribed: false })
+let pushKey = ''
+
+function pushSupported(): boolean {
+  return import.meta.client && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+}
+
+function keyBytes(key: string): Uint8Array<ArrayBuffer> {
+  const base64 = key.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(key.length / 4) * 4, '=')
+  return Uint8Array.from(atob(base64), ch => ch.charCodeAt(0))
+}
+
+/** The page's service worker, or the push one on its own where the app's is not registered (development). */
+async function pushRegistration(): Promise<ServiceWorkerRegistration> {
+  const existing = await navigator.serviceWorker.getRegistration()
+  if (!existing) await navigator.serviceWorker.register('/push-sw.js')
+  return navigator.serviceWorker.ready
+}
+
+async function loadPush() {
+  if (!pushSupported()) return
+  try {
+    const res = await request<{ enabled: boolean, publicKey: string | null, endpoints: string[] }>('/api/notifications/push')
+    pushKey = res.publicKey ?? ''
+    const registration = await navigator.serviceWorker.getRegistration()
+    const mine = await registration?.pushManager.getSubscription()
+    _push.value = { supported: true, enabled: res.enabled, subscribed: Boolean(mine && res.endpoints.includes(mine.endpoint)) }
+  } catch { /* signed out, or offline */ }
+}
+
 export function useNotifications() {
+  /** Subscribes this browser to push, or unsubscribes it. Returns a reason when it cannot. */
+  async function setPush(on: boolean): Promise<string | null> {
+    if (!pushSupported()) return 'This browser cannot receive push notifications'
+    try {
+      if (on) {
+        if (!pushKey) return 'Push notifications are not set up on this server'
+        const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
+        if (permission !== 'granted') return 'Allow notifications for this site in the browser, then try again'
+        const registration = await pushRegistration()
+        const subscription = (await registration.pushManager.getSubscription())
+          ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushKey) })
+        await request('/api/notifications/push', { method: 'POST', headers: realtimeHeaders(), body: subscription.toJSON() })
+      } else {
+        const registration = await navigator.serviceWorker.getRegistration()
+        const subscription = await registration?.pushManager.getSubscription()
+        if (subscription) {
+          await request('/api/notifications/push', { method: 'DELETE', headers: realtimeHeaders(), body: { endpoint: subscription.endpoint } })
+          await subscription.unsubscribe()
+        }
+      }
+      await loadPush()
+      return null
+    } catch (e) {
+      return errorMessage(e, 'Could not change push notifications')
+    }
+  }
+
+  /** Asks the server to push to every subscribed device. */
+  async function testPush(): Promise<string | null> {
+    try {
+      const res = await request<{ devices: number, accepted: number }>('/api/notifications/push-test', { method: 'POST', headers: realtimeHeaders() })
+      return res.accepted ? null : 'No push service accepted the message'
+    } catch (e) {
+      return errorMessage(e, 'Could not send a test')
+    }
+  }
+
   async function markRead(ids: string[]) {
     const now = Date.now()
     const unread = _items.value.filter(item => ids.includes(item.id) && !item.readAt).length
@@ -120,6 +200,7 @@ export function useNotifications() {
     started = true
     load()
     loadPreferences()
+    loadPush()
     onNotification(load)
     // A tab that slept through some comes back to a stale count.
     document.addEventListener('visibilitychange', () => {
@@ -127,5 +208,5 @@ export function useNotifications() {
     })
   }
 
-  return { items: _items, unread: _unread, prefs: _prefs, loaded: _loaded, load, markRead, markAllRead, setPreference, init }
+  return { items: _items, unread: _unread, prefs: _prefs, push: _push, loaded: _loaded, load, markRead, markAllRead, setPreference, setPush, testPush, init }
 }

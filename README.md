@@ -128,6 +128,8 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `SMTP_SECURE` | `false` | `true` for TLS from the first byte; otherwise STARTTLS is used when offered |
 | `SMTP_USER` / `SMTP_PASSWORD` | empty | SMTP credentials, if the server needs them |
 | `SMTP_FROM` | empty | Sender address, e.g. `Taskmanager <taskmanager@example.com>` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | empty | Key pair for Web Push (notifications when no tab is open); both must be set, and the site needs HTTPS. `.env.example` has a one-line command that makes a pair |
+| `VAPID_SUBJECT` | `mailto:admin@localhost` | How push services can reach you: a `mailto:` or `https:` URL |
 
 To enable Discord, set all three Discord variables and register this redirect URL in the Discord developer portal:
 

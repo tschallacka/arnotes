@@ -416,6 +416,27 @@ export const notificationPreferences = pgTable('notification_preferences', {
   browser: boolean('browser').notNull().default(false)
 })
 
+// One row for each browser or device that said yes to Web Push. The endpoint is
+// the push service's address for that device; the two keys are what a message to
+// it is encrypted with. A device the push service reports gone is deleted.
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    userAgent: text('user_agent').notNull().default(''),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    lastSentAt: bigint('last_sent_at', { mode: 'number' })
+  },
+  table => [
+    uniqueIndex('push_subscriptions_endpoint_idx').on(table.endpoint),
+    index('push_subscriptions_user_idx').on(table.userId)
+  ]
+)
+
 // Conversations on a project, kept apart from the work: a message has an
 // optional subject, and a reply is a message whose parent is another. Replies go
 // with the message they answer.

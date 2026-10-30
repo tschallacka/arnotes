@@ -4,9 +4,10 @@
 // assigned by hand.
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '../db'
-import { notificationPreferences, notifications, user } from '../db/schema'
+import { notificationPreferences, notifications, pushSubscriptions, user } from '../db/schema'
 import type { NotificationType } from '../db/schema'
 import { mailEnabled, sendMail } from '../lib/mailer'
+import { pushEnabled, sendPush } from '../lib/webpush'
 import { projectPeople } from './people'
 import { publishToUser } from './realtime'
 
@@ -69,6 +70,7 @@ export async function notify(input: NotifyInput): Promise<number> {
 
   await Promise.all(ids.map(id => publishToUser(id, { type: 'notification' }).catch(() => {})))
   void sendCopies(rows, input)
+  void sendPushes(rows, input)
   return rows.length
 }
 
@@ -100,6 +102,25 @@ async function sendCopies(rows: { id: string, userId: string }[], input: NotifyI
     }
   } catch (error) {
     console.error('[notifications] could not send email', error)
+  }
+}
+
+// A push goes to every device the person subscribed, and a device the push
+// service says is gone is forgotten. Like mail, it is best effort.
+async function sendPushes(rows: { id: string, userId: string }[], input: NotifyInput) {
+  if (!pushEnabled) return
+  try {
+    const devices = await db.select().from(pushSubscriptions)
+      .where(inArray(pushSubscriptions.userId, rows.map(row => row.userId)))
+    const url = `/projects/${input.project.id}${input.task ? `?task=${input.task.id}` : ''}`
+    await Promise.all(devices.map(async (device) => {
+      const row = rows.find(candidate => candidate.userId === device.userId)!
+      const result = await sendPush(device, { title: input.title, body: input.body ?? '', url, tag: row.id })
+      if (result.gone) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, device.id))
+      else if (result.ok) await db.update(pushSubscriptions).set({ lastSentAt: Date.now() }).where(eq(pushSubscriptions.id, device.id))
+    }))
+  } catch (error) {
+    console.error('[notifications] could not send push', error)
   }
 }
 

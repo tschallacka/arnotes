@@ -136,7 +136,9 @@ export default defineNuxtConfig({
       ]
     },
     workbox: {
-      globPatterns: ['**/*.{js,css,html,svg,ico}']
+      globPatterns: ['**/*.{js,css,html,svg,ico}'],
+      // Web Push: show what the server sends and open it on a click.
+      importScripts: ['/push-sw.js']
     },
     client: {
       installPrompt: true

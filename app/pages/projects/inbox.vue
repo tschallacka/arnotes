@@ -10,7 +10,7 @@ definePageMeta({ layout: 'app' })
 const { sidebarOpen } = useSidebar()
 useSeoMeta({ title: 'Inbox' })
 
-const { items, unread, prefs, loaded, load, markRead, markAllRead, setPreference } = useNotifications()
+const { items, unread, prefs, push, loaded, load, markRead, markAllRead, setPreference, setPush, testPush } = useNotifications()
 onMounted(load)
 
 const filter = ref<'all' | 'unread'>('all')
@@ -44,6 +44,15 @@ const settingsError = ref('')
 
 async function toggle(key: 'email' | 'browser') {
   settingsError.value = (await setPreference(key, !prefs.value[key])) ?? ''
+}
+
+async function togglePush() {
+  settingsError.value = (await setPush(!push.value.subscribed)) ?? ''
+}
+
+const pushNote = ref('')
+async function sendTest() {
+  pushNote.value = (await testPush()) ?? 'Sent. It should arrive in a moment.'
 }
 </script>
 
@@ -115,6 +124,38 @@ async function toggle(key: 'email' | 'browser') {
               <span>
                 <span class="block text-sm text-default">Desktop notifications</span>
                 <span class="block text-xs text-muted">Shown by your browser when Taskmanager is open in a tab you are not looking at.</span>
+              </span>
+            </label>
+            <label
+              v-if="push.supported && push.enabled"
+              class="flex items-start gap-3"
+            >
+              <input
+                type="checkbox"
+                class="mt-0.5 size-4 accent-primary"
+                :checked="push.subscribed"
+                data-pref-push
+                @change="togglePush"
+              >
+              <span>
+                <span class="block text-sm text-default">Push notifications on this device</span>
+                <span class="block text-xs text-muted">Shown by your device even when Taskmanager is closed.</span>
+                <span
+                  v-if="push.subscribed"
+                  class="mt-1 flex items-center gap-2 text-xs"
+                >
+                  <button
+                    type="button"
+                    class="text-primary hover:underline"
+                    data-push-test
+                    @click.prevent="sendTest"
+                  >Send a test</button>
+                  <span
+                    v-if="pushNote"
+                    class="text-muted"
+                    data-push-note
+                  >{{ pushNote }}</span>
+                </span>
               </span>
             </label>
             <label class="flex items-start gap-3">

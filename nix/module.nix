@@ -59,6 +59,8 @@ let
     SMTP_USER = cfg.smtp.user;
     SMTP_PASSWORD = cfg.smtp.password;
     SMTP_FROM = cfg.smtp.from;
+    VAPID_PUBLIC_KEY = cfg.push.publicKey;
+    VAPID_SUBJECT = cfg.push.subject;
     HOST = cfg.host;
     PORT = toString cfg.port;
     HOME = cfg.stateDir;
@@ -66,6 +68,9 @@ let
   // cfg.environment
   // lib.optionalAttrs (cfg.betterAuth.secretFile != null) {
     BETTER_AUTH_SECRET = lib.trim (lib.readFile cfg.betterAuth.secretFile);
+  }
+  // lib.optionalAttrs (cfg.push.privateKeyFile != null) {
+    VAPID_PRIVATE_KEY = lib.trim (lib.readFile cfg.push.privateKeyFile);
   };
 in
 {
@@ -273,6 +278,29 @@ in
         type = lib.types.str;
         default = "";
         example = "Taskmanager <notes@example.com>";
+      };
+    };
+
+    push = {
+      publicKey = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = ''
+          VAPID public key for Web Push (unpadded base64url). Push notifications
+          are off until this and privateKeyFile are set. Generate a pair with the
+          node one-liner in .env.example.
+        '';
+      };
+      privateKeyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "File holding the VAPID private key. Like betterAuth.secretFile it is read when the configuration is evaluated.";
+      };
+      subject = lib.mkOption {
+        type = lib.types.str;
+        default = "mailto:admin@localhost";
+        example = "mailto:you@example.com";
+        description = "Contact for push services, a mailto: or https: URL.";
       };
     };
 

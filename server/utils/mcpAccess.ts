@@ -9,12 +9,9 @@ import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { projectTasks } from '../db/schema'
 import type { Project } from '../db/schema'
 import type { ApiKeyContext } from './api-keys'
-import { audienceFor, commentVisibilityFilter, customerIdsOf, sessionProjectFilter, taskVisibilityFilter } from './auth-helpers'
+import { audienceFor, customerIdsOf, sessionProjectFilter } from './auth-helpers'
 import type { Audience } from './auth-helpers'
 import { McpToolError } from './mcpToolKit'
-
-export { commentVisibilityFilter, taskVisibilityFilter }
-export type { Audience }
 
 /** The boards this key's person can open: the same filter the browser uses. */
 export async function boardFilter(context: ApiKeyContext) {
