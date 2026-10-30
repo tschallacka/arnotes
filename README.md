@@ -103,6 +103,7 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | Variable | Default | Description |
 | --- | --- | --- |
 | `BETTER_AUTH_URL` | `http://localhost:3000` | Public application origin used by authentication |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | empty | Extra origins, comma separated, that may sign in besides `BETTER_AUTH_URL` |
 | `APP_PORT` | `3000` | Host port mapped to the application |
 | `DATABASE_URL` | bundled PostgreSQL | Complete PostgreSQL connection URL |
 | `BETTER_AUTH_SECRET` | generated | Stable 32+ character authentication secret; generated into the data volume when empty |

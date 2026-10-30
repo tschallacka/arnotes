@@ -198,5 +198,6 @@ export const auth = betterAuth({
         }
       : {})
   },
-  trustedOrigins: [baseURL]
+  // More than one address can serve the app, such as a dev tunnel next to localhost.
+  trustedOrigins: [baseURL, ...(process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? '').split(',').map(origin => origin.trim()).filter(Boolean)]
 })
