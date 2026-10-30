@@ -17,6 +17,7 @@ import { McpToolError, asToolError, asToolErrorAsync, excerpt, idFromReference, 
 import type { McpToolDefinition } from './mcpToolKit'
 import { MAX_PROJECT_DESCRIPTION, PROJECT_STATUSES, parseDueOn, parseProjectStatus } from './taskFields'
 import { projectPeople } from './people'
+import { readTaskGithubLinks } from './githubTaskLinks'
 import { notifyAssigned, notifyTaskChange } from './notifyEvents'
 import { changesToTask, inboxBriefs, logActivity } from './taskActivity'
 import { checkFieldValues, describeFieldValues, listFields, loadFieldValues, setFieldValues } from './customFields'
@@ -333,6 +334,8 @@ async function taskDetail(task: ProjectTask, board: Project, context: ApiKeyCont
     ...taskSchedule(task, await peopleNames(board)),
     ...(audience === 'staff' ? await describedFields(board, task) : {}),
     description: task.description ? htmlToMarkdown(task.description) : '',
+    // The GitHub links the caller may see, with what GitHub says about each (see githubTaskLinks).
+    github: (await readTaskGithubLinks({ taskId: task.id, audience })).links,
     createdAt: new Date(task.createdAt).toISOString(),
     updatedAt: new Date(task.updatedAt).toISOString(),
     // Update bodies are stored as the inline Markdown they were written in, by
@@ -568,7 +571,7 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
   {
     name: 'get_task',
     title: 'Read a task',
-    description: 'Read one task in full: its column, Markdown description, labels and the whole thread of updates posted on it. This is where the complete description lives — get_board and search_tasks only carry the opening of it.',
+    description: 'Read one task in full: its column, Markdown description, labels, the GitHub items linked to it (the ones the key\'s person may see, with their state and pull requests) and the whole thread of updates posted on it. This is where the complete description lives — get_board and search_tasks only carry the opening of it.',
     scope: 'boards:read',
     readOnly: true,
     inputSchema: {

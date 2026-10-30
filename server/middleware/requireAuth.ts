@@ -16,11 +16,17 @@ const PROTECTED_PREFIXES = [
   '/api/time',
   '/api/timer',
   '/api/customers',
-  '/api/admin'
+  '/api/admin',
+  '/api/github'
 ]
+
+// GitHub calls this itself, so it carries no session. It proves who it is with the
+// X-Hub-Signature-256 header, checked in the route.
+const WEBHOOK_PATHS = ['/api/github/webhook']
 
 export default defineEventHandler(async (event) => {
   const path = event.path
+  if (WEBHOOK_PATHS.includes(path)) return
   if (!PROTECTED_PREFIXES.some(prefix => path.startsWith(prefix))) return
 
   const session = await auth.api.getSession({ headers: event.headers })

@@ -131,6 +131,10 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `SMTP_FROM` | empty | Sender address, e.g. `Taskmanager <taskmanager@example.com>` |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | empty | Key pair for Web Push (notifications when no tab is open); both must be set, and the site needs HTTPS. `.env.example` has a one-line command that makes a pair |
 | `VAPID_SUBJECT` | `mailto:admin@localhost` | How push services can reach you: a `mailto:` or `https:` URL |
+| `GITHUB_TOKEN` | empty | Optional GitHub token for reading issues, pull requests and workflow runs; public repositories work without it, at GitHub's lower rate limit. Only ever sent to GitHub |
+| `GITHUB_WEBHOOK_SECRET` | empty | Secret GitHub signs webhook deliveries with, checked on `POST /api/github/webhook`. The receiver answers 503 until it is set |
+| `GITHUB_ALLOWED_OWNERS` | empty | Comma-separated GitHub owners and orgs that links may point at. Empty allows any owner the token can see; set it in production, since the token can read every repository it has access to |
+| `GITHUB_API_URL` | empty | Testing only: call a local stub instead of `api.github.com`. Ignored when `NODE_ENV` is `production` |
 
 To enable Discord, set all three Discord variables and register this redirect URL in the Discord developer portal:
 
@@ -156,6 +160,12 @@ To use your own OpenID Connect server (Authentik, Authelia, Keycloak, Pocket ID,
 
 ```text
 https://taskmanager.example.com/api/auth/oauth2/callback/oidc
+```
+
+GitHub integration is in progress. The server side is in place: it parses GitHub references, reads issue, pull request, branch and workflow run data from `api.github.com` with the token kept on the server, and keeps a cache with a webhook receiver. No link can be added from the app yet: the task routes, the task panel, the card badge and the agent tools are still to come, and this section will be updated when they land. The webhook receiver is in place. In the repository or organisation settings on GitHub, add a webhook with this payload URL, content type `application/json`, the same secret as `GITHUB_WEBHOOK_SECRET`, and the events `issues`, `pull_request`, `check_run` and `workflow_run`. Until the secret is set on the server, the receiver answers 503:
+
+```text
+https://taskmanager.example.com/api/github/webhook
 ```
 
 ### Passkeys, Two-Factor And Email Codes

@@ -6,10 +6,16 @@ import { MCP_TOOLS } from './mcpRegistry'
 import type { McpToolDefinition } from './mcpToolKit'
 
 // Tools are grouped in the order a person would think of them.
-const GROUPS: { title: string, match: (tool: McpToolDefinition) => boolean }[] = [
+// A group may carry a note: a short paragraph on what its tools have in common.
+const GROUPS: { title: string, match: (tool: McpToolDefinition) => boolean, note?: string }[] = [
   { title: 'Boards, columns and tasks', match: tool => /^(list_boards|get_board|get_task|search_tasks|list_task_labels|create_board|update_board|(create|update|delete|restore)_(column|task)|post_task_update|move_task)$/.test(tool.name) },
   { title: 'My tasks and my inbox', match: tool => /^(my_tasks|list_notifications|mark_notifications_read)$/.test(tool.name) },
   { title: 'Custom fields', match: tool => /_fields?$/.test(tool.name) },
+  {
+    title: 'GitHub',
+    match: tool => /_github$/.test(tool.name),
+    note: 'A task can link GitHub issues, pull requests, branches and workflow runs. Each link shows what GitHub says now (state, pull requests, review and check status, branch position, run status), fetched on the server and cached, so the token never reaches you. Links follow the same audience rule as the task: a customer contact sees only the links marked for customers, and linking or unlinking is for the team.'
+  },
   { title: 'Goals and portfolios', match: tool => /_(goals?|portfolios?)$/.test(tool.name) },
   { title: 'Status updates', match: tool => /status_update/.test(tool.name) },
   { title: 'Messages', match: tool => /message/.test(tool.name) && !/notification/.test(tool.name) },
@@ -31,7 +37,8 @@ export function buildAgentSkill(origin: string): string {
   const sections = GROUPS.map((group) => {
     const tools = MCP_TOOLS.filter(tool => !grouped.has(tool.name) && group.match(tool))
     tools.forEach(tool => grouped.add(tool.name))
-    return tools.length ? `### ${group.title}\n\n${tools.map(toolLine).join('\n')}` : ''
+    const intro = group.note ? `${group.note}\n\n` : ''
+    return tools.length ? `### ${group.title}\n\n${intro}${tools.map(toolLine).join('\n')}` : ''
   }).filter(Boolean)
 
   const rest = MCP_TOOLS.filter(tool => !grouped.has(tool.name))

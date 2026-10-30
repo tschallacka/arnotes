@@ -32,6 +32,21 @@ let
     printf 'BETTER_AUTH_SECRET=%s\n' "$(tr -d '\n' < "$secret_file")" > "$env_file"
   '';
 
+  # Runs at service start, not evaluation, so the GitHub token and webhook secret
+  # are read from the credential files and never written into the Nix store.
+  githubEnvScript = pkgs.writeShellScript "arnotes-github-env" ''
+    set -eu
+    if [ -r "''${CREDENTIALS_DIRECTORY:-}/github-token" ]; then
+      GITHUB_TOKEN="$(cat "$CREDENTIALS_DIRECTORY/github-token")"
+      export GITHUB_TOKEN
+    fi
+    if [ -r "''${CREDENTIALS_DIRECTORY:-}/github-webhook-secret" ]; then
+      GITHUB_WEBHOOK_SECRET="$(cat "$CREDENTIALS_DIRECTORY/github-webhook-secret")"
+      export GITHUB_WEBHOOK_SECRET
+    fi
+    exec "$@"
+  '';
+
   appEnvironment = {
     DATABASE_URL = databaseUrl;
     BETTER_AUTH_URL = cfg.betterAuth.url;
@@ -61,6 +76,7 @@ let
     SMTP_FROM = cfg.smtp.from;
     VAPID_PUBLIC_KEY = cfg.push.publicKey;
     VAPID_SUBJECT = cfg.push.subject;
+    GITHUB_ALLOWED_OWNERS = lib.concatStringsSep "," cfg.githubIntegration.allowedOwners;
     HOST = cfg.host;
     PORT = toString cfg.port;
     HOME = cfg.stateDir;
@@ -195,6 +211,25 @@ in
       clientSecret = lib.mkOption {
         type = lib.types.str;
         default = "";
+      };
+    };
+
+    githubIntegration = {
+      allowedOwners = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "acme" "acme-labs" ];
+        description = "GitHub owners and orgs that links may point at. Empty allows any owner the token can see. Set it in production: the token can read every repository it has access to.";
+      };
+      tokenFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "File holding the GitHub integration token (GITHUB_TOKEN), used to read issues and pull requests. Not the GitHub sign-in: that is github.clientId and github.clientSecret. Optional: public repositories work without it, at GitHub's lower rate limit. Read when the service starts, so it stays out of the Nix store.";
+      };
+      webhookSecretFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "File holding the secret GitHub signs webhook deliveries with (GITHUB_WEBHOOK_SECRET), for POST /api/github/webhook. Read when the service starts, so it stays out of the Nix store.";
       };
     };
 
@@ -393,7 +428,10 @@ in
       ];
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        ExecStart = "${arnotes}/bin/arnotes";
+        ExecStart = "${githubEnvScript} ${arnotes}/bin/arnotes";
+        LoadCredential =
+          lib.optional (cfg.githubIntegration.tokenFile != null) "github-token:${toString cfg.githubIntegration.tokenFile}"
+          ++ lib.optional (cfg.githubIntegration.webhookSecretFile != null) "github-webhook-secret:${toString cfg.githubIntegration.webhookSecretFile}";
         User = "arnotes";
         Group = "arnotes";
         WorkingDirectory = cfg.stateDir;

@@ -688,3 +688,66 @@ export const apiKeys = pgTable(
 )
 
 export type ApiKey = typeof apiKeys.$inferSelect
+
+// ─── GitHub integration ───────────────────────────────────────────────────────
+
+// What a link on a task points at. `ref` holds the issue or PR number, the
+// branch name, or the workflow run id, as text, so one column serves all four.
+export const GITHUB_LINK_KINDS = ['issue', 'pull', 'branch', 'workflow_run'] as const
+export type GithubLinkKind = typeof GITHUB_LINK_KINDS[number]
+
+// Links are the task's own history: they hang off the task and project, and
+// nothing cascades from a customer, so a change of customer keeps them.
+export const githubLinks = pgTable(
+  'github_links',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => projectTasks.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<GithubLinkKind>().notNull(),
+    owner: text('owner').notNull(),
+    repo: text('repo').notNull(),
+    ref: text('ref').notNull(),
+    url: text('url').notNull(),
+    // Same rule as tasks and comments: internal unless someone chooses otherwise.
+    visibility: text('visibility').$type<Visibility>().notNull().default('internal'),
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [
+    index('github_links_task_id_idx').on(table.taskId),
+    index('github_links_project_id_idx').on(table.projectId)
+  ]
+)
+
+export type GithubLink = typeof githubLinks.$inferSelect
+
+// Fetched GitHub responses, keyed by the request they answer. `etag` lets a
+// refresh ask "changed since?" and get a free 304 back.
+export const githubCache = pgTable(
+  'github_cache',
+  {
+    id: text('id').primaryKey(),
+    key: text('key').notNull().unique(),
+    kind: text('kind').notNull(),
+    etag: text('etag'),
+    // HTTP status of the last answer, and the response body as received.
+    status: integer('status'),
+    body: json('body'),
+    fetchedAt: bigint('fetched_at', { mode: 'number' }).notNull(),
+    // Set after a rate limit or error, so we do not hammer GitHub before then.
+    nextRetryAt: bigint('next_retry_at', { mode: 'number' })
+  }
+)
+
+export type GithubCacheEntry = typeof githubCache.$inferSelect
+
+// Per-project GitHub defaults: `#123` resolves against the default repo, and new
+// links take the default visibility.
+export const projectGithubSettings = pgTable('project_github_settings', {
+  projectId: text('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
+  defaultRepo: text('default_repo'),
+  defaultVisibility: text('default_visibility').$type<Visibility>().notNull().default('internal')
+})
+
+export type ProjectGithubSettings = typeof projectGithubSettings.$inferSelect
