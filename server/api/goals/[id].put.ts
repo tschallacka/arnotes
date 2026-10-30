@@ -15,5 +15,6 @@ export default defineEventHandler(async (event) => {
   const { values, projectIds } = await readGoalPatch(userId, teamId, body, goal.id)
   const [row] = await db.update(goals).set({ ...values, updatedAt: Date.now() }).where(eq(goals.id, goal.id)).returning()
   if (projectIds) await replaceGoalProjects(goal.id, projectIds)
+  await publishCollection(event, 'goals')
   return viewGoal(row!)
 })

@@ -19,5 +19,6 @@ export default defineEventHandler(async (event) => {
 
   const [row] = await db.update(portfolios).set({ ...values, updatedAt: Date.now() }).where(eq(portfolios.id, portfolio.id)).returning()
   if (projectIds) await replacePortfolioProjects(portfolio.id, projectIds)
+  await publishCollection(event, 'portfolios')
   return viewPortfolio(row!)
 })

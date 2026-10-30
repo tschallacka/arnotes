@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
     updatedAt: now
   }).returning()
   if ('projectIds' in body) await replacePortfolioProjects(row!.id, await ownProjectIds(userId, teamId, parseIdList(body.projectIds, 'The projects')))
+  await publishCollection(event, 'portfolios')
   setResponseStatus(event, 201)
   return viewPortfolio(row!)
 })

@@ -25,6 +25,7 @@ export default defineEventHandler(async (event) => {
     updatedAt: now
   }).returning()
   if (projectIds) await replaceGoalProjects(row!.id, projectIds)
+  await publishCollection(event, 'goals')
   setResponseStatus(event, 201)
   return viewGoal(row!)
 })

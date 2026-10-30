@@ -16,6 +16,7 @@ type RealtimeMessage
     | { type: 'board', projectId: string }
     | { type: 'resource', projectId: string, resource: string }
     | { type: 'notification' }
+    | { type: 'collection', collection: string }
 
 // One id per tab, sent on connect and with every mutating request, so the server
 // can leave the tab that caused a change out of the fan-out.
@@ -57,6 +58,9 @@ async function flush() {
 
   const { syncProjects, reloadBoardQuiet, activeProjectId, commentsTaskId, loadComments } = useProjects()
 
+  // Goals and portfolios read their numbers off the boards, so board news moves them too.
+  if (projects || boards.length) notifyCollections(['goals', 'portfolios'])
+
   const work: Promise<unknown>[] = []
 
   // Either kind of board news moves the sidebar's task counts and "edited" line.
@@ -91,6 +95,11 @@ export function onResourceChange(resource: string, listener: ResourceListener): 
   }
 }
 
+/** Tells whoever shows the named workspace lists that they changed. */
+function notifyCollections(names: string[]) {
+  for (const name of names) for (const listener of resourceListeners.get(name) ?? []) listener('')
+}
+
 /** Calls back when something lands in this person's inbox. */
 export function onNotification(listener: () => void): () => void {
   notificationListeners.add(listener)
@@ -115,6 +124,11 @@ function handle(message: RealtimeMessage) {
       break
     case 'resource':
       for (const listener of resourceListeners.get(message.resource) ?? []) listener(message.projectId)
+      // A goal or portfolio shows its projects' latest status update.
+      if (message.resource === 'status-updates') notifyCollections(['goals', 'portfolios'])
+      return
+    case 'collection':
+      notifyCollections([message.collection])
       return
     case 'notification':
       for (const listener of notificationListeners) listener()

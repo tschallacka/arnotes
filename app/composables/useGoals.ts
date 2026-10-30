@@ -67,8 +67,26 @@ function replace<T extends { id: string }>(list: Ref<T[]>, row: T) {
     : [row, ...list.value]
 }
 
+// Re-reads a list when the socket says it changed elsewhere — a teammate, an
+// agent, another tab, or work on a project the list reads its numbers from.
+// Bursts collapse into one fetch, and a failed one leaves the list as it was.
+function refreshOnNews(name: 'goals' | 'portfolios', reload: () => Promise<unknown>) {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  useResourceListener(name, () => {
+    if (timer) return
+    timer = setTimeout(() => {
+      timer = null
+      reload().catch(() => {})
+    }, 300)
+  })
+  if (getCurrentScope()) onScopeDispose(() => timer && clearTimeout(timer))
+}
+
 export function useGoals() {
   const loading = ref(false)
+  refreshOnNews('goals', async () => {
+    _goals.value = await untypedFetch<Goal[]>('/api/goals')
+  })
 
   async function load() {
     loading.value = true
@@ -102,6 +120,9 @@ export function useGoals() {
 
 export function usePortfolios() {
   const loading = ref(false)
+  refreshOnNews('portfolios', async () => {
+    _portfolios.value = await untypedFetch<Portfolio[]>('/api/portfolios')
+  })
 
   async function load() {
     loading.value = true

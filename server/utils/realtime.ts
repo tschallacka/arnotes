@@ -33,9 +33,14 @@ export type RealtimeEvent
     | { type: 'resource', projectId: string, resource: ProjectResource }
     // Something arrived in the signed-in person's inbox.
     | { type: 'notification' }
+    // A workspace-wide list that is not a board's own changed: goals or portfolios.
+    | { type: 'collection', collection: WorkspaceCollection }
 
 /** The collections hung off a project that are the team's own, named as their endpoints are. */
 export type ProjectResource = 'messages' | 'status-updates' | 'time'
+
+/** The workspace-wide lists that sit above the boards, named as their endpoints are. */
+export type WorkspaceCollection = 'goals' | 'portfolios'
 
 /** One person's own channel: every tab they have open listens on it. */
 export function userTopic(userId: string): string {
@@ -183,6 +188,14 @@ export async function publishFromEvent(event: H3Event, realtimeEvent: RealtimeEv
   if (!session) return
   const topic = workspaceTopic(session.user.id, await getUserActiveTeamId(event))
   await publish(topic, realtimeEvent, getRequestHeader(event, 'x-client-id') ?? null)
+}
+
+/**
+ * Announces that a workspace's goals or portfolios changed. Staff-only: a
+ * customer's contact has no goals, so it goes to the workspace topic alone.
+ */
+export async function publishCollection(event: H3Event, collection: WorkspaceCollection) {
+  await publishFromEvent(event, { type: 'collection', collection })
 }
 
 /**

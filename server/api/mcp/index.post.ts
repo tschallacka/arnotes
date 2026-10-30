@@ -9,7 +9,7 @@ import { McpToolError } from '../../utils/mcpToolKit'
 import { API_KEY_SCOPES } from '../../db/schema'
 import type { ApiKeyScope } from '../../db/schema'
 import { publish, workspaceTopic } from '../../utils/realtime'
-import type { ProjectResource, RealtimeEvent } from '../../utils/realtime'
+import type { ProjectResource, RealtimeEvent, WorkspaceCollection } from '../../utils/realtime'
 
 const SERVER_NAME = 'taskmanager'
 const SERVER_VERSION = '0.1.0'
@@ -69,10 +69,15 @@ const ALL_SCOPES: ApiKeyScope[] = [...API_KEY_SCOPES]
  * board on screen refreshes instead of going stale. Board results carry the
  * board they touched; anything else falls back to the coarse signal.
  */
-function announceWrite(tool: { scope: ApiKeyScope, resource?: ProjectResource }, value: unknown, context: ApiKeyContext) {
+function announceWrite(tool: { scope: ApiKeyScope, resource?: ProjectResource, collection?: WorkspaceCollection }, value: unknown, context: ApiKeyContext) {
   if (tool.scope !== 'boards:write') return
 
   const topic = workspaceTopic(context.userId, context.teamId)
+  // Goals and portfolios are not a board's: they announce their own list and nothing else.
+  if (tool.collection) {
+    void publish(topic, { type: 'collection', collection: tool.collection })
+    return
+  }
   const record = asRecord(value)
   const board = asRecord(value).board
   const projectId = typeof board === 'object' && board !== null

@@ -8,5 +8,6 @@ import { requireGoal } from '../../utils/goals'
 export default defineEventHandler(async (event) => {
   const goal = await requireGoal(event.context.session.user.id, await getUserActiveTeamId(event), getRouterParam(event, 'id')!)
   await db.delete(goals).where(eq(goals.id, goal.id))
+  await publishCollection(event, 'goals')
   return { ok: true }
 })

@@ -4,6 +4,7 @@ All notable changes to Arnotes are documented in this file.
 
 ## Unreleased
 
+
 - Goals and portfolios, as in Asana. A goal says what the work is for: a status, an owner, a due date, sub-goals, and progress that is typed in or read from the projects linked to it. A portfolio reads several projects side by side, with each one's health, how much is done and its latest status update. Both belong to the workspace (a team, or your own space) and only link its own projects. Agents get `list_goals`, `create_goal`, `update_goal`, `list_portfolios`, `create_portfolio` and `update_portfolio`; deleting is left to the app. The database gains `goals`, `goal_projects`, `portfolios` and `portfolio_projects`
 - Web Push: an Inbox switch subscribes a browser or phone to notifications that arrive when Taskmanager is closed. Each notification is encrypted to the device and signed with the server's VAPID key (written against RFC 8291 and 8292, no new dependency); a device the push service reports gone is forgotten. Off until `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are set; the NixOS module has `services.arnotes.push`. The database gains `push_subscriptions`
 - Removed the notes feature entirely. `/note`, the sidebar notes panel, global notes search, and the five notes MCP tools (`list_notes`, `search_notes`, `get_note`, `create_note`, `update_note`, `delete_note`, `restore_note`) are gone, along with the `notes` database table and the `notes:read`/`notes:write` API key scopes. The app is boards and tasks only now

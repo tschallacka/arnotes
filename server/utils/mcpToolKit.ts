@@ -1,7 +1,7 @@
 // Shared shape and argument parsing for the board MCP tools in mcpBoardTools.ts.
 import type { ApiKeyScope } from '../db/schema'
 import type { ApiKeyContext } from './api-keys'
-import type { ProjectResource } from './realtime'
+import type { ProjectResource, WorkspaceCollection } from './realtime'
 
 export interface McpToolDefinition {
   name: string
@@ -12,6 +12,8 @@ export interface McpToolDefinition {
   readOnly: boolean
   /** The staff-only collection a write tool changes, so the views showing it update live. */
   resource?: ProjectResource
+  /** The workspace-wide list a write tool changes (goals, portfolios), so the pages showing it update live. */
+  collection?: WorkspaceCollection
   /**
    * Advertised for the writes that cannot be undone, so a client can warn
    * first. Nothing sets it today: every delete an agent can reach goes to a

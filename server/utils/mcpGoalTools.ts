@@ -42,6 +42,7 @@ export const MCP_GOAL_TOOLS: McpToolDefinition[] = [
     title: 'Create a goal',
     description: 'Create a goal in the key\'s workspace. Only the title is needed; the owner defaults to the key\'s person.',
     scope: 'boards:write',
+    collection: 'goals',
     readOnly: false,
     inputSchema: { type: 'object', properties: GOAL_PROPERTIES, required: ['title'] },
     async handler(args, context) {
@@ -69,6 +70,7 @@ export const MCP_GOAL_TOOLS: McpToolDefinition[] = [
     title: 'Change a goal',
     description: 'Change the fields you pass on a goal; the rest stay. Passing projectIds replaces the linked projects.',
     scope: 'boards:write',
+    collection: 'goals',
     readOnly: false,
     inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Goal id from list_goals.' }, ...GOAL_PROPERTIES }, required: ['id'] },
     async handler(args, context) {
@@ -98,6 +100,7 @@ export const MCP_GOAL_TOOLS: McpToolDefinition[] = [
     title: 'Create a portfolio',
     description: 'Create a portfolio, a named set of projects read side by side.',
     scope: 'boards:write',
+    collection: 'portfolios',
     readOnly: false,
     inputSchema: {
       type: 'object',
@@ -130,6 +133,7 @@ export const MCP_GOAL_TOOLS: McpToolDefinition[] = [
     title: 'Change a portfolio',
     description: 'Change the fields you pass on a portfolio; the rest stay. Passing projectIds replaces the set of projects.',
     scope: 'boards:write',
+    collection: 'portfolios',
     readOnly: false,
     inputSchema: {
       type: 'object',

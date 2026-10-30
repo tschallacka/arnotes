@@ -8,5 +8,6 @@ import { requirePortfolio } from '../../utils/portfolioViews'
 export default defineEventHandler(async (event) => {
   const portfolio = await requirePortfolio(event.context.session.user.id, await getUserActiveTeamId(event), getRouterParam(event, 'id')!)
   await db.delete(portfolios).where(eq(portfolios.id, portfolio.id))
+  await publishCollection(event, 'portfolios')
   return { ok: true }
 })
