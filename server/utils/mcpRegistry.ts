@@ -10,6 +10,7 @@ import { MCP_ME_TOOLS } from './mcpMeTools'
 import { MCP_MESSAGE_TOOLS } from './mcpMessageTools'
 import { MCP_STATUS_TOOLS } from './mcpStatusTools'
 import { MCP_TIME_TOOLS } from './mcpTimeTools'
+import { MCP_UPDATE_TOOLS } from './mcpUpdateTools'
 import type { McpToolDefinition } from './mcpToolKit'
 
 export const MCP_TOOLS: McpToolDefinition[] = [
@@ -19,7 +20,8 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   ...MCP_MESSAGE_TOOLS,
   ...MCP_ME_TOOLS,
   ...MCP_STATUS_TOOLS,
-  ...MCP_TIME_TOOLS
+  ...MCP_TIME_TOOLS,
+  ...MCP_UPDATE_TOOLS
 ]
 
 export function toolsForScopes(scopes: ApiKeyScope[]): McpToolDefinition[] {
