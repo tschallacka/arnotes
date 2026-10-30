@@ -220,6 +220,8 @@ export const projects = pgTable(
     // A link anyone can open, optionally until a date.
     isPublic: boolean('is_public').notNull().default(false),
     publicUntil: bigint('public_until', { mode: 'number' }),
+    // NULL = active. An archived project is read-only and leaves the project list.
+    archivedAt: bigint('archived_at', { mode: 'number' }),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
   },
@@ -751,3 +753,65 @@ export const projectGithubSettings = pgTable('project_github_settings', {
 })
 
 export type ProjectGithubSettings = typeof projectGithubSettings.$inferSelect
+
+// Repositories a project can link issues and pull requests from. The default
+// lives in project_github_settings, so it is not repeated here.
+export const projectGithubRepos = pgTable(
+  'project_github_repos',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    owner: text('owner').notNull(),
+    repo: text('repo').notNull(),
+    visibility: text('visibility').$type<Visibility>().notNull().default('internal'),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [uniqueIndex('project_github_repos_project_repo_idx').on(table.projectId, table.owner, table.repo)]
+)
+
+export type ProjectGithubRepo = typeof projectGithubRepos.$inferSelect
+
+// Automation rules for a project. trigger, conditions and actions are JSON
+// documents whose shape is validated by the rule model, not by the database.
+export const projectRules = pgTable(
+  'project_rules',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    trigger: json('trigger').notNull(),
+    conditions: json('conditions').notNull().default([]),
+    actions: json('actions').notNull().default([]),
+    position: integer('position').notNull().default(0),
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull()
+  },
+  table => [index('project_rules_project_id_idx').on(table.projectId)]
+)
+
+export type ProjectRule = typeof projectRules.$inferSelect
+export type NewProjectRule = typeof projectRules.$inferInsert
+
+// One line per rule firing. task_id has no foreign key: a task can be deleted
+// while its run history stays readable.
+export const projectRuleRuns = pgTable(
+  'project_rule_runs',
+  {
+    id: text('id').primaryKey(),
+    ruleId: text('rule_id').notNull().references(() => projectRules.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id'),
+    trigger: text('trigger').notNull(),
+    // ran, failed or loop_stopped
+    outcome: text('outcome').notNull(),
+    detail: text('detail').notNull().default(''),
+    chainId: text('chain_id').notNull(),
+    depth: integer('depth').notNull().default(0),
+    createdAt: bigint('created_at', { mode: 'number' }).notNull()
+  },
+  table => [index('project_rule_runs_rule_created_idx').on(table.ruleId, table.createdAt)]
+)
+
+export type ProjectRuleRun = typeof projectRuleRuns.$inferSelect

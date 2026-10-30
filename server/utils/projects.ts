@@ -20,7 +20,7 @@ export async function getProjectAccessFilter(event: H3Event) {
 }
 
 /** The caller's relation to a project they reached through the filter above. */
-export async function audienceOf(event: H3Event, project: { userId: string, teamId: string | null }): Promise<Audience> {
+async function audienceOf(event: H3Event, project: { userId: string, teamId: string | null }): Promise<Audience> {
   return audienceFor(event.context.session.user.id, await getUserActiveTeamId(event), project)
 }
 

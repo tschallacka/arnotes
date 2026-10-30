@@ -39,11 +39,12 @@ const VIEWS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'i-lucide-chart-column' },
   { key: 'messages', label: 'Messages', icon: 'i-lucide-message-square' },
   { key: 'time', label: 'Time', icon: 'i-lucide-clock' },
-  { key: 'files', label: 'Files', icon: 'i-lucide-paperclip' }
+  { key: 'files', label: 'Files', icon: 'i-lucide-paperclip' },
+  { key: 'settings', label: 'Settings', icon: 'i-lucide-settings' }
 ] as const
 
-// Time and messages are the team's own: a customer's contact has no tab for them.
-const STAFF_ONLY_VIEWS: string[] = ['messages', 'time']
+// Time, messages and settings are the team's own: a customer's contact has no tab for them.
+const STAFF_ONLY_VIEWS: string[] = ['messages', 'time', 'settings']
 const visibleViews = computed(() => VIEWS.filter(v => !STAFF_ONLY_VIEWS.includes(v.key) || !isCustomerView.value))
 
 const view = computed(() => visibleViews.value.find(v => v.key === route.query.view)?.key ?? 'board')
@@ -478,6 +479,10 @@ useSeoMeta({
         />
         <KanbanProjectTimeView
           v-else-if="view === 'time'"
+          :project-id="projectId"
+        />
+        <KanbanProjectSettingsView
+          v-else-if="view === 'settings'"
           :project-id="projectId"
         />
         <KanbanProjectFilesView

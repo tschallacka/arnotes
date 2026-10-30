@@ -11,6 +11,8 @@ import type { GithubLink } from '../db/schema'
 import { githubGet, rateLimitMessage } from '../lib/github'
 import type { GithubFailureCode } from '../lib/github'
 import { ownerAllowed } from './githubAllow'
+import { pullTransitions } from './githubPullEvents'
+import type { PullEventKind, PullSnapshot } from './githubPullEvents'
 
 // An answer younger than this is used as it is, without asking GitHub.
 const FRESH_MS = 60_000
@@ -370,7 +372,7 @@ function finish(data: LinkData | null, pieces: Piece<unknown>[]): SyncResult {
 
 // ─── One sync per kind of link ───────────────────────────────────────────────
 
-async function syncIssue(link: LinkRef, force: boolean): Promise<SyncResult> {
+async function syncIssue(link: LinkRef, force: boolean, events: PullEventKind[] = []): Promise<SyncResult> {
   const base = repoBase(link)
   const n = link.ref
   const issue = await fetchPiece<RawIssue>('issue', keyFor(link, 'issue'), `${base}/issues/${n}`, force)
@@ -378,7 +380,7 @@ async function syncIssue(link: LinkRef, force: boolean): Promise<SyncResult> {
 
   // GitHub's issues endpoint answers for pull requests too (with a pull_request key), so
   // `owner/repo#45` may be a pull request. Show it as one, with its checks and branch.
-  if (issue.body.pull_request) return { ...(await syncPull({ ...link, kind: 'pull' }, force)), kind: 'pull' }
+  if (issue.body.pull_request) return { ...(await syncPull({ ...link, kind: 'pull' }, force, events)), kind: 'pull' }
 
   const raw = issue.body
   const count = raw.comments ?? 0
@@ -429,7 +431,22 @@ async function syncIssue(link: LinkRef, force: boolean): Promise<SyncResult> {
   return finish(data, pieces)
 }
 
-async function syncPull(link: LinkRef, force: boolean): Promise<SyncResult> {
+/** The pull as the cache holds it before a sync overwrites it, so the sync can tell what changed. Null when never seen. */
+async function previousPull(link: LinkRef): Promise<PullSnapshot | null> {
+  const row = await loadRow(keyFor(link, 'pull'))
+  const pull = row?.body as RawPull | null | undefined
+  if (!pull) return null
+  const checks = await loadRow(keyFor(link, `checks:${pull.head.sha}`))
+  const runs = (checks?.body as { check_runs: RawCheckRun[] } | null | undefined)?.check_runs
+  return {
+    state: pull.state,
+    merged: pull.merged === true || pull.merged_at != null,
+    checks: runs ? checksOf(runs).state : null
+  }
+}
+
+async function syncPull(link: LinkRef, force: boolean, events: PullEventKind[] = []): Promise<SyncResult> {
+  const before = await previousPull(link)
   const base = repoBase(link)
   const n = link.ref
   const pull = await fetchPiece<RawPull>('pull', keyFor(link, 'pull'), `${base}/pulls/${n}`, force)
@@ -459,6 +476,8 @@ async function syncPull(link: LinkRef, force: boolean): Promise<SyncResult> {
     headBranchDeleted,
     checks: checksOf(checks.body?.check_runs ?? [])
   }
+  const after: PullSnapshot = { state: raw.state, merged: data.merged, checks: checks.body ? data.checks.state : null }
+  events.push(...pullTransitions(before, after))
   return finish(data, [pull, reviews, checks, branches])
 }
 
@@ -530,25 +549,34 @@ async function syncRun(link: LinkRef, force: boolean): Promise<SyncResult> {
  * webhook use it); a known rate limit is still respected.
  */
 export async function syncLink(link: LinkRef, options: { force?: boolean } = {}): Promise<SyncResult> {
+  return (await syncLinkEvents(link, options)).result
+}
+
+/** As syncLink, and also the pull request events the sync found (see githubPullEvents). */
+export async function syncLinkEvents(link: LinkRef, options: { force?: boolean } = {}): Promise<{ result: SyncResult, events: PullEventKind[] }> {
   checkLink(link)
   // The second gate: a link made before the owner was taken off the allowlist is not fetched.
   // Checked before any call or cache write, so a refused owner costs nothing.
   const allowed = ownerAllowed(link.owner)
-  if (!allowed.ok) return { data: null, error: 'refused', message: allowed.message, fetchedAt: null, nextRetryAt: null }
+  if (!allowed.ok) return { result: { data: null, error: 'refused', message: allowed.message, fetchedAt: null, nextRetryAt: null }, events: [] }
   const force = options.force === true
+  const events: PullEventKind[] = []
   try {
-    if (link.kind === 'issue') return await syncIssue(link, force)
-    if (link.kind === 'pull') return await syncPull(link, force)
-    if (link.kind === 'branch') return await syncBranch(link, force)
-    return await syncRun(link, force)
+    if (link.kind === 'issue') return { result: await syncIssue(link, force, events), events }
+    if (link.kind === 'pull') return { result: await syncPull(link, force, events), events }
+    if (link.kind === 'branch') return { result: await syncBranch(link, force), events }
+    return { result: await syncRun(link, force), events }
   } catch {
     // Anything unexpected (a malformed answer, a dropped database connection) is
     // reported in words; the cache keeps what it had.
-    return { data: null, error: 'unavailable', message: UNAVAILABLE, fetchedAt: null, nextRetryAt: null }
+    return { result: { data: null, error: 'unavailable', message: UNAVAILABLE, fetchedAt: null, nextRetryAt: null }, events }
   }
 }
 
 // ─── Webhooks ────────────────────────────────────────────────────────────────
+
+/** A pull request event on one stored link, for the rules engine. */
+export interface LinkTransition { projectId: string, taskId: string, linkId: string, event: PullEventKind, prNumber: number }
 
 interface WebhookPayload {
   repository?: { full_name?: string }
@@ -560,15 +588,15 @@ interface WebhookPayload {
 
 /**
  * Refreshes the cached data for the links an event touches. Only links in the
- * repo the event came from are looked at. Returns how many links were refreshed.
+ * repo the event came from are looked at. Returns the pull request events they found, one entry per link.
  */
-export async function refreshForEvent(event: string, payload: WebhookPayload): Promise<number> {
+export async function refreshForEvent(event: string, payload: WebhookPayload): Promise<LinkTransition[]> {
   const [owner, repo] = (payload.repository?.full_name ?? '').split('/')
-  if (!owner || !repo || !NAME.test(owner) || !NAME.test(repo)) return 0
+  if (!owner || !repo || !NAME.test(owner) || !NAME.test(repo)) return []
   // An event from a repo whose owner is no longer allowed refreshes nothing.
-  if (!ownerAllowed(owner).ok) return 0
+  if (!ownerAllowed(owner).ok) return []
 
-  const links = await db.select({ kind: githubLinks.kind, owner: githubLinks.owner, repo: githubLinks.repo, ref: githubLinks.ref })
+  const links = await db.select({ id: githubLinks.id, projectId: githubLinks.projectId, taskId: githubLinks.taskId, kind: githubLinks.kind, owner: githubLinks.owner, repo: githubLinks.repo, ref: githubLinks.ref })
     .from(githubLinks)
     .where(and(
       sql`lower(${githubLinks.owner}) = ${owner.toLowerCase()}`,
@@ -599,8 +627,10 @@ export async function refreshForEvent(event: string, payload: WebhookPayload): P
   const unique = new Map<string, LinkRef>()
   for (const link of affected) unique.set(`${link.kind}:${link.ref}`, { ...link, owner, repo })
   const targets = [...unique.values()].slice(0, MAX_REFRESH)
+  const found = new Map<string, PullEventKind[]>()
   for (const target of targets) {
-    await syncLink(target, { force: true })
+    found.set(`${target.kind}:${target.ref}`, (await syncLinkEvents(target, { force: true })).events)
   }
-  return targets.length
+  // One entry per stored link the events belong to, so every task on the PR hears them.
+  return affected.flatMap(link => (found.get(`${link.kind}:${link.ref}`) ?? []).map(hit => ({ projectId: link.projectId, taskId: link.taskId, linkId: link.id, event: hit, prNumber: Number(link.ref) })))
 }
