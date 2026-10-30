@@ -3,6 +3,7 @@ import { projects, projectTasks } from '../../db/schema'
 import { eq } from 'drizzle-orm'
 import { requireProject, requireStaff } from '../../utils/projects'
 import { requireOrgCustomer } from '../../utils/customers'
+import { projectPeople } from '../../utils/people'
 import { isAccentColor } from '#shared/utils/colors'
 import { closeTopic, publicProjectTopic, publishFromEvent } from '../../utils/realtime'
 import { removeTaskAttachments } from '../../utils/attachments'
@@ -11,7 +12,10 @@ import { MAX_PROJECT_DESCRIPTION, parseDashboardWidgets, parseProjectStatus } fr
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
   const project = await requireProject(event, id)
+  // Anyone on the project may read it, so a contact can still open an archived board.
+  if (event.method === 'GET') return project
   requireStaff(project)
+  const userId = event.context.session.user.id
 
   if (event.method === 'PUT') {
     const body = await readBody<{
@@ -23,6 +27,7 @@ export default defineEventHandler(async (event) => {
       publicUntil?: number | null
       labelColor?: { label?: string, color?: string | null }
       customerId?: string | null
+      ownerId?: string
     }>(event)
     const name = body.name?.trim()
 
@@ -51,6 +56,20 @@ export default defineEventHandler(async (event) => {
       labelColors = color === null ? rest : { ...rest, [label]: color }
     }
 
+    // The owner is the team member the project is recorded under. Visibility comes from the
+    // team, so changing it does not change who can see the project.
+    if (body.ownerId !== undefined) {
+      if (!project.teamId) throw createError({ statusCode: 400, message: 'A personal project has no owner to change' })
+      // Only the current owner may hand the project on: the owner is what rules trust for visibility.
+      if (body.ownerId !== project.userId && userId !== project.userId) {
+        throw createError({ statusCode: 403, message: 'Only the project owner can hand the project to someone else' })
+      }
+      const people = await projectPeople(project)
+      if (!people.some(p => p.id === body.ownerId && p.kind === 'staff')) {
+        throw createError({ statusCode: 400, message: 'The owner must be a member of the team' })
+      }
+    }
+
     const status = body.status === undefined ? undefined : parseProjectStatus(body.status)
     const dashboardWidgets = body.dashboardWidgets === undefined ? undefined : parseDashboardWidgets(body.dashboardWidgets)
 
@@ -64,6 +83,7 @@ export default defineEventHandler(async (event) => {
         ...(body.publicUntil !== undefined && { publicUntil: body.publicUntil }),
         ...(labelColors !== undefined && { labelColors }),
         ...(customerId !== undefined && { customerId }),
+        ...(body.ownerId !== undefined && { userId: body.ownerId }),
         updatedAt: Date.now()
       })
       .where(eq(projects.id, id))

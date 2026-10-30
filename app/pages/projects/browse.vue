@@ -6,7 +6,37 @@ definePageMeta({ layout: 'app' })
 const { sidebarOpen } = useSidebar()
 useSeoMeta({ title: 'Browse projects' })
 
-const { projects, allTasks } = useProjects()
+const { projects, allTasks, unarchiveProject } = useProjects()
+
+// Archived projects leave every list, so this is the only place to find them again.
+interface ArchivedRow { id: string, name: string, archivedAt: number | null }
+const archived = ref<ArchivedRow[]>([])
+const restoringId = ref('')
+const archivedError = ref('')
+
+async function loadArchived() {
+  try {
+    const list = await $fetch<ArchivedRow[]>('/api/projects', { query: { archived: '1' } })
+    archived.value = list.filter(project => project.archivedAt != null)
+  } catch {
+    archived.value = []
+  }
+}
+
+async function restore(project: ArchivedRow) {
+  restoringId.value = project.id
+  archivedError.value = ''
+  try {
+    await unarchiveProject(project.id)
+    archived.value = archived.value.filter(row => row.id !== project.id)
+  } catch (e) {
+    archivedError.value = (e as { data?: { message?: string } })?.data?.message || 'Could not unarchive the project'
+  } finally {
+    restoringId.value = ''
+  }
+}
+
+onMounted(loadArchived)
 
 const query = ref('')
 
@@ -91,6 +121,52 @@ const rows = computed(() => {
           class="px-4 py-6 text-center text-sm text-muted"
         >
           No projects match.
+        </p>
+      </div>
+      <div
+        v-if="archived.length"
+        class="mt-8"
+      >
+        <h2 class="text-sm font-semibold text-default">
+          Archived
+        </h2>
+        <p class="mt-1 text-xs text-muted">
+          Hidden from the lists. Their boards still open, and their rules do not run until they are unarchived.
+        </p>
+        <div class="mt-3 overflow-hidden rounded-xl border border-default bg-default">
+          <div
+            v-for="project in archived"
+            :key="project.id"
+            data-browse-archived
+            class="flex items-center gap-3 border-b border-default px-4 py-3 text-sm last:border-b-0"
+          >
+            <NuxtLink
+              :to="`/projects/${project.id}`"
+              class="min-w-0 flex-1 truncate font-medium text-default hover:underline"
+            >
+              {{ project.name }}
+            </NuxtLink>
+            <span
+              v-if="project.archivedAt"
+              class="hidden shrink-0 text-xs text-dimmed sm:block"
+            >Archived {{ formatDistanceToNow(project.archivedAt, { addSuffix: true }) }}</span>
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="soft"
+              data-unarchive
+              :loading="restoringId === project.id"
+              @click="restore(project)"
+            >
+              Unarchive
+            </UButton>
+          </div>
+        </div>
+        <p
+          v-if="archivedError"
+          class="mt-2 text-sm text-error"
+        >
+          {{ archivedError }}
         </p>
       </div>
     </div>

@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto'
 import { and, asc, eq } from 'drizzle-orm'
 import { db } from '../db'
-import { githubLinks, projectGithubSettings } from '../db/schema'
+import { githubLinks, projectGithubRepos, projectGithubSettings } from '../db/schema'
 import type { GithubLink, Project, ProjectTask, Visibility } from '../db/schema'
 import type { Audience } from './auth-helpers'
 import { canSeeGithubLink, effectiveVisibility, visibleGithubLinks } from './githubAudience'
@@ -87,7 +87,10 @@ export async function createTaskGithubLink(input: {
   if (input.visibility !== undefined && input.visibility !== 'internal' && input.visibility !== 'customer') {
     return { ok: false, reason: 'bad_visibility', message: '"visibility" must be "internal" or "customer".' }
   }
-  const visibility: Visibility = effectiveVisibility({ visibility: input.visibility }, settings)
+  // A linked repository's own visibility beats the project default; an explicit choice on the request beats both.
+  const linked = await db.select().from(projectGithubRepos).where(eq(projectGithubRepos.projectId, input.board.id))
+  const repo = linked.find(row => row.owner.toLowerCase() === parsed.owner.toLowerCase() && row.repo.toLowerCase() === parsed.repo.toLowerCase())
+  const visibility: Visibility = effectiveVisibility({ visibility: input.visibility ?? repo?.visibility }, settings)
   // The parser says `run`; the stored kind is `workflow_run` (PM decision, GH10).
   const kind = parsed.kind === 'run' ? 'workflow_run' : parsed.kind
 

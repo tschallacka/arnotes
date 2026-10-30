@@ -393,6 +393,8 @@ function activityIcon(kind: TaskActivityItem['kind']) {
 }
 
 function activityActor(item: TaskActivityItem) {
+  // A change a rule made names the rule, not the person who saved the rule.
+  if (item.detail.rule) return `Rule: ${item.detail.rule}`
   return item.actorName ?? 'Someone'
 }
 

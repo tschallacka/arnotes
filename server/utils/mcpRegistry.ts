@@ -9,6 +9,7 @@ import { MCP_GITHUB_TOOLS } from './mcpGithubTools'
 import { MCP_GOAL_TOOLS } from './mcpGoalTools'
 import { MCP_ME_TOOLS } from './mcpMeTools'
 import { MCP_MESSAGE_TOOLS } from './mcpMessageTools'
+import { MCP_RULE_TOOLS } from './mcpRuleTools'
 import { MCP_STATUS_TOOLS } from './mcpStatusTools'
 import { MCP_TIME_TOOLS } from './mcpTimeTools'
 import { MCP_UPDATE_TOOLS } from './mcpUpdateTools'
@@ -21,6 +22,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   ...MCP_GOAL_TOOLS,
   ...MCP_MESSAGE_TOOLS,
   ...MCP_ME_TOOLS,
+  ...MCP_RULE_TOOLS,
   ...MCP_STATUS_TOOLS,
   ...MCP_TIME_TOOLS,
   ...MCP_UPDATE_TOOLS

@@ -12,6 +12,7 @@ import { githubGet, rateLimitMessage } from '../lib/github'
 import type { GithubFailureCode } from '../lib/github'
 import { ownerAllowed } from './githubAllow'
 import { pullTransitions } from './githubPullEvents'
+import { fireRules, newRuleChain } from './ruleEngine'
 import type { PullEventKind, PullSnapshot } from './githubPullEvents'
 
 // An answer younger than this is used as it is, without asking GitHub.
@@ -445,6 +446,32 @@ async function previousPull(link: LinkRef): Promise<PullSnapshot | null> {
   }
 }
 
+/**
+ * Fires the rules for a pull's transitions, once per task that links the pull. An issue
+ * link with the same number is the same pull (GitHub numbers both alike). Runs after the
+ * sync has saved its cache, and never throws, so a failed lookup does not undo the sync.
+ */
+async function fireForPull(link: LinkRef, found: PullEventKind[]): Promise<void> {
+  if (found.length === 0) return
+  try {
+    const rows = await db.select({ projectId: githubLinks.projectId, taskId: githubLinks.taskId }).from(githubLinks).where(and(
+      sql`lower(${githubLinks.owner}) = ${link.owner.toLowerCase()}`,
+      sql`lower(${githubLinks.repo}) = ${link.repo.toLowerCase()}`,
+      eq(githubLinks.ref, link.ref),
+      sql`${githubLinks.kind} in ('pull', 'issue')`
+    ))
+    // One chain per change, so each task's rules run once per event.
+    const tasks = new Map(rows.map(row => [row.taskId, row.projectId]))
+    for (const [taskId, projectId] of tasks) {
+      for (const type of found) {
+        await fireRules({ type, projectId, taskId, actorId: null, actorIsAgent: false, detail: link.ref }, newRuleChain())
+      }
+    }
+  } catch {
+    // The rules are best effort; the sync itself has already been saved.
+  }
+}
+
 async function syncPull(link: LinkRef, force: boolean, events: PullEventKind[] = []): Promise<SyncResult> {
   const before = await previousPull(link)
   const base = repoBase(link)
@@ -477,7 +504,9 @@ async function syncPull(link: LinkRef, force: boolean, events: PullEventKind[] =
     checks: checksOf(checks.body?.check_runs ?? [])
   }
   const after: PullSnapshot = { state: raw.state, merged: data.merged, checks: checks.body ? data.checks.state : null }
-  events.push(...pullTransitions(before, after))
+  const found = pullTransitions(before, after)
+  events.push(...found)
+  await fireForPull(link, found)
   return finish(data, [pull, reviews, checks, branches])
 }
 

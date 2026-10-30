@@ -16,6 +16,11 @@ const GROUPS: { title: string, match: (tool: McpToolDefinition) => boolean, note
     match: tool => /_github$/.test(tool.name),
     note: 'A task can link GitHub issues, pull requests, branches and workflow runs. Each link shows what GitHub says now (state, pull requests, review and check status, branch position, run status), fetched on the server and cached, so the token never reaches you. Links follow the same audience rule as the task: a customer contact sees only the links marked for customers, and linking or unlinking is for the team.'
   },
+  {
+    title: 'Rules',
+    match: tool => /_rules?$|_rule_runs$/.test(tool.name),
+    note: 'Rules run when something happens on a board: a trigger, then the conditions that must hold, then the actions, in order. Anyone on the team may create and change them. Only the project owner may use set_visibility in a rule, which makes a task customer-visible. A rule can be switched off with update_rule and "enabled" alone, and list_rule_runs shows what it did each time it fired.'
+  },
   { title: 'Goals and portfolios', match: tool => /_(goals?|portfolios?)$/.test(tool.name) },
   { title: 'Status updates', match: tool => /status_update/.test(tool.name) },
   { title: 'Messages', match: tool => /message/.test(tool.name) && !/notification/.test(tool.name) },

@@ -8,6 +8,7 @@ import { requireAssignable } from '../../../utils/people'
 import { parseDueOn } from '../../../utils/taskFields'
 import { logActivity } from '../../../utils/taskActivity'
 import { notifyAssigned } from '../../../utils/notifyEvents'
+import { fireRules, newRuleChain } from '../../../utils/ruleEngine'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{
@@ -85,6 +86,8 @@ export default defineEventHandler(async (event) => {
 
   await logActivity(task!, event.context.session.user.id, [{ kind: 'created' }])
   if (task?.assigneeId) await notifyAssigned(projectRow, task, event.context.session.user.id, task.assigneeId)
+  // The rules hear about the new task once it is saved, and a subtask counts too.
+  if (task) await fireRules({ type: 'task_added', projectId: projectRow.id, taskId: task.id, actorId: event.context.session.user.id, actorIsAgent: false, detail: null }, newRuleChain()).catch(() => {})
 
   await publishFromEvent(event, { type: 'board', projectId: projectRow.id })
   return task

@@ -10,6 +10,7 @@ import { McpToolError, newId, optionalString, requireString } from './mcpToolKit
 import type { McpToolDefinition } from './mcpToolKit'
 import { notificationExcerpt } from './notifications'
 import { notifyComment } from './notifyEvents'
+import { fireRules, newRuleChain } from './ruleEngine'
 
 export const MCP_UPDATE_TOOLS: McpToolDefinition[] = [
   {
@@ -49,6 +50,8 @@ export const MCP_UPDATE_TOOLS: McpToolDefinition[] = [
       }).returning()
 
       await notifyComment(board, task, context.userId, body, visibility === 'internal')
+      // A new update is a comment to the rules, as it is in the app.
+      await fireRules({ type: 'comment_added', projectId: board.id, taskId: task.id, actorId: context.userId, actorIsAgent: true, detail: null }, newRuleChain()).catch(() => {})
       return {
         posted: true,
         // At the top level so the open browsers are told which board changed.

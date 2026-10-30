@@ -1,6 +1,6 @@
 import { db } from '../../db'
 import { changesToTask, inboxBriefs, logActivity } from '../../utils/taskActivity'
-import { projects, projectTasks, VISIBILITIES, type Visibility } from '../../db/schema'
+import { projects, projectTasks, VISIBILITIES, type ProjectTask, type Visibility } from '../../db/schema'
 import { eq } from 'drizzle-orm'
 import { requireTask, requireColumn, requireStaff, columnTasksOrdered, subtasksOrdered, positionBetween, uiDeletion, rootTaskId, isInAncestryChain } from '../../utils/projects'
 import { publishFromEvent } from '../../utils/realtime'
@@ -9,6 +9,31 @@ import { requireAssignable } from '../../utils/people'
 import { parseDueOn } from '../../utils/taskFields'
 import { listFields, setFieldValues } from '../../utils/customFields'
 import { notifyAssigned, notifyTaskChange } from '../../utils/notifyEvents'
+import { fireRules, newRuleChain } from '../../utils/ruleEngine'
+import type { TriggerKind } from '../../utils/ruleSpec'
+
+import type { H3Event } from 'h3'
+
+// Rules run once a change is saved: one chain per event, awaited, and never
+// failing the request. The route's own answer is not touched.
+async function fireChanges(event: H3Event, projectId: string, task: ProjectTask, patch: {
+  columnId?: string
+  completedAt?: number | null
+  assigneeId?: string | null
+  dueOn?: string | null
+}) {
+  const actorId = event.context.session.user.id
+  const changes: { type: TriggerKind, detail: string | null }[] = []
+  if (patch.columnId && patch.columnId !== task.columnId) changes.push({ type: 'task_moved', detail: patch.columnId })
+  if (patch.completedAt !== undefined && !!patch.completedAt !== !!task.completedAt) {
+    changes.push({ type: patch.completedAt ? 'task_completed' : 'task_reopened', detail: null })
+  }
+  if (patch.assigneeId && patch.assigneeId !== task.assigneeId) changes.push({ type: 'task_assigned', detail: patch.assigneeId })
+  if (patch.dueOn && patch.dueOn !== task.dueOn) changes.push({ type: 'due_set', detail: null })
+  for (const change of changes) {
+    await fireRules({ ...change, projectId, taskId: task.id, actorId, actorIsAgent: false }, newRuleChain()).catch(() => {})
+  }
+}
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -166,6 +191,7 @@ export default defineEventHandler(async (event) => {
     const [updated] = await db.update(projectTasks).set(patch).where(eq(projectTasks.id, id)).returning()
     await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, project.id))
     await tell()
+    await fireChanges(event, project.id, task, patch)
     await publishFromEvent(event, { type: 'board', projectId: project.id })
     return fieldValues ? { ...updated, fieldValues } : updated
   }
@@ -210,6 +236,7 @@ export default defineEventHandler(async (event) => {
   await db.update(projects).set({ updatedAt: Date.now() }).where(eq(projects.id, project.id))
 
   await tell()
+  await fireChanges(event, project.id, task, patch)
   await publishFromEvent(event, { type: 'board', projectId: project.id })
   return fieldValues ? { ...updated, fieldValues } : updated
 })

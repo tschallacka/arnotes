@@ -17,7 +17,7 @@ const {
   renameProject,
   setProjectCustomer,
   updateProjectSharing,
-  deleteProject,
+  unarchiveProject,
   activeTags,
   boardTagCounts,
   toggleTagFilter,
@@ -106,14 +106,10 @@ async function commitRename() {
   if (project && name && name !== project.name) await renameProject(project.id, name)
 }
 
-const deleteOpen = ref(false)
-
-async function confirmDelete() {
+async function unarchiveNow() {
   const project = activeProject.value
-  deleteOpen.value = false
   if (!project) return
-  await deleteProject(project.id)
-  navigateTo('/projects')
+  await unarchiveProject(project.id)
 }
 
 // The trash entry earns its place only when there is something in it — or when
@@ -130,13 +126,7 @@ const projectMenu = computed(() => {
 
   return [
     [{ label: 'Rename project', icon: 'i-lucide-pencil', onSelect: startRename }],
-    ...trash,
-    [{
-      label: 'Delete project',
-      icon: 'i-lucide-trash-2',
-      color: 'error' as const,
-      onSelect: () => { deleteOpen.value = true }
-    }]
+    ...trash
   ]
 })
 
@@ -356,6 +346,34 @@ useSeoMeta({
       </div>
     </header>
 
+    <!-- Archived: out of the lists and its rules are paused; the board itself stays usable -->
+    <div
+      v-if="activeProject?.archivedAt"
+      class="flex flex-wrap items-center gap-3 border-b border-warning/40 bg-warning/10 px-4 py-2 text-sm text-default lg:px-6"
+      data-archived-banner
+    >
+      <span class="inline-flex items-center gap-1.5 font-medium">
+        <UIcon
+          name="i-lucide-archive"
+          class="size-4 text-warning"
+        />
+        Archived
+      </span>
+      <span class="min-w-0 flex-1 text-muted">
+        Hidden from the project lists and its rules are paused. Tasks can still be edited.
+      </span>
+      <UButton
+        v-if="!isCustomerView"
+        label="Unarchive"
+        icon="i-lucide-archive-restore"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        data-unarchive
+        @click="unarchiveNow"
+      />
+    </div>
+
     <!-- View tabs -->
     <nav
       class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-default px-4 lg:px-6"
@@ -497,27 +515,6 @@ useSeoMeta({
       :task="drawerTask"
       @close="closeDrawer"
     />
-
-    <UModal
-      v-model:open="deleteOpen"
-      title="Delete project?"
-      description="Columns, tasks and updates are deleted with it. This cannot be undone."
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer>
-        <UButton
-          label="Cancel"
-          color="neutral"
-          variant="ghost"
-          @click="deleteOpen = false"
-        />
-        <UButton
-          label="Delete project"
-          color="error"
-          @click="confirmDelete"
-        />
-      </template>
-    </UModal>
 
     <!-- Mobile bottom nav -->
     <div

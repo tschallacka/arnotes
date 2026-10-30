@@ -19,6 +19,8 @@ import { MAX_PROJECT_DESCRIPTION, PROJECT_STATUSES, parseDueOn, parseProjectStat
 import { projectPeople } from './people'
 import { readTaskGithubLinks } from './githubTaskLinks'
 import { notifyAssigned, notifyTaskChange } from './notifyEvents'
+import { fireRules, newRuleChain } from './ruleEngine'
+import type { TriggerKind } from './ruleSpec'
 import { changesToTask, inboxBriefs, logActivity } from './taskActivity'
 import { checkFieldValues, describeFieldValues, listFields, loadFieldValues, setFieldValues } from './customFields'
 
@@ -1058,6 +1060,8 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       if (task!.assigneeId) await notifyAssigned(board, task!, context.userId, task!.assigneeId)
       const storedValues = fieldMap ? await asToolErrorAsync(() => setFieldValues(task!.id, fieldDefs, fieldMap)) : undefined
       await touchBoard(board.id)
+      // Rules hear about the saved task, as they do from the app. A failure there never fails this call.
+      await fireRules({ type: 'task_added', projectId: board.id, taskId: task!.id, actorId: context.userId, actorIsAgent: true, detail: null }, newRuleChain()).catch(() => {})
       // The caller wrote the description; echoing it back with an empty update
       // thread teaches it nothing. The ids and the card are the useful receipt.
       return {
@@ -1116,6 +1120,16 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
       await notifyTaskChange(board, updated!, context.userId, inboxBriefs(entries))
       if (fields.assigneeId && fields.assigneeId !== task.assigneeId) await notifyAssigned(board, updated!, context.userId, fields.assigneeId)
       if (fieldMap) await asToolErrorAsync(() => setFieldValues(task.id, fieldDefs, fieldMap))
+      // Rules hear about each change the update made, as they do from the app.
+      const changes: { type: TriggerKind, detail: string | null }[] = []
+      if (fields.completedAt !== undefined && !!fields.completedAt !== !!task.completedAt) {
+        changes.push({ type: fields.completedAt ? 'task_completed' : 'task_reopened', detail: null })
+      }
+      if (fields.assigneeId && fields.assigneeId !== task.assigneeId) changes.push({ type: 'task_assigned', detail: fields.assigneeId })
+      if (fields.dueOn && fields.dueOn !== task.dueOn) changes.push({ type: 'due_set', detail: null })
+      for (const change of changes) {
+        await fireRules({ ...change, projectId: board.id, taskId: task.id, actorId: context.userId, actorIsAgent: true }, newRuleChain()).catch(() => {})
+      }
 
       const column = await findColumn(board, task.columnId)
       await touchBoard(board.id)
@@ -1166,6 +1180,10 @@ export const MCP_BOARD_TOOLS: McpToolDefinition[] = [
         const entries = await changesToTask(task, { columnId: column.id })
         await logActivity(task, context.userId, entries, 'mcp')
         await notifyTaskChange(board, updated!, context.userId, inboxBriefs(entries))
+      }
+      // Rules hear about a card that changed column, as they do from the app.
+      if (column.id !== from.id) {
+        await fireRules({ type: 'task_moved', projectId: board.id, taskId: task.id, actorId: context.userId, actorIsAgent: true, detail: column.id }, newRuleChain()).catch(() => {})
       }
       // `board` sits at the top level because the MCP endpoint reads it to tell
       // the open browsers which board changed — without it a move only raises

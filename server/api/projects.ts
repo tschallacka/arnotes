@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
       .select({ project: projects, customerName: customers.name })
       .from(projects)
       .leftJoin(customers, eq(customers.id, projects.customerId))
-      .where(filter)
+      .where(getQuery(event).archived === '1' ? filter : and(filter, isNull(projects.archivedAt)))
       .orderBy(desc(projects.updatedAt))
     if (!rows.length) return []
 

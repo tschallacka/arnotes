@@ -6,6 +6,7 @@ import { requireTask, genId } from '../../../utils/projects'
 import { commentVisibilityFilter } from '../../../utils/auth-helpers'
 import { publishFromEvent } from '../../../utils/realtime'
 import { notifyComment } from '../../../utils/notifyEvents'
+import { fireRules, newRuleChain } from '../../../utils/ruleEngine'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')!
@@ -57,6 +58,8 @@ export default defineEventHandler(async (event) => {
   }).returning()
 
   await notifyComment(project, _task, event.context.session.user.id, body, comment!.visibility === 'internal')
+  // A comment is an event too: the rules hear about it once it is saved.
+  await fireRules({ type: 'comment_added', projectId: project.id, taskId: id, actorId: event.context.session.user.id, actorIsAgent: false, detail: null }, newRuleChain()).catch(() => {})
   await publishFromEvent(event, { type: 'board', projectId: _task.projectId })
   return { ...comment, userName: event.context.session.user.name, keyName: null }
 })

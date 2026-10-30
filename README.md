@@ -22,6 +22,8 @@ Taskmanager is a self-hosted project manager for an agency and its customers: or
 - Bring-your-own-key OpenRouter integration; AI is entirely optional
 - Customers inside your organisation, each with projects and logins of their own: a customer sees the tasks and updates you mark as visible to them, and never the internal ones
 - Kanban boards for projects: columns, drag-and-drop tasks, labels, rich-text descriptions, and a log of updates per task, written in a narrow inline Markdown (bold, italic, code, strike, highlight, links)
+- Project Settings for the team: General (owner, archive and delete), Repositories (several linked GitHub repositories, one default), Rules and Custom fields
+- Automation rules per project: a trigger, conditions and actions, with a run log, and loop protection
 - Live updates, so a change made by an AI agent, a teammate, or another tab shows up without a reload — on shared links too
 - Built-in MCP server so Claude Code and other AI agents can read and manage your boards, using API keys you scope yourself
 - Installable Progressive Web App
@@ -134,6 +136,7 @@ Only expose the application through the reverse proxy. PostgreSQL is bound to `1
 | `GITHUB_TOKEN` | empty | Optional GitHub token for reading issues, pull requests and workflow runs; public repositories work without it, at GitHub's lower rate limit. Only ever sent to GitHub |
 | `GITHUB_WEBHOOK_SECRET` | empty | Secret GitHub signs webhook deliveries with, checked on `POST /api/github/webhook`. The receiver answers 503 until it is set |
 | `GITHUB_ALLOWED_OWNERS` | empty | Comma-separated GitHub owners and orgs that links may point at. Empty allows any owner the token can see; set it in production, since the token can read every repository it has access to |
+| `DUE_RULES_INTERVAL_MS` | `900000` | How often the due-date rules are checked, in milliseconds (15 minutes). Testing only: ignored when `NODE_ENV` is `production` |
 | `GITHUB_API_URL` | empty | Testing only: call a local stub instead of `api.github.com`. Ignored when `NODE_ENV` is `production` |
 
 To enable Discord, set all three Discord variables and register this redirect URL in the Discord developer portal:
@@ -317,6 +320,33 @@ bun run dev         # run the dev server with hot reload
 `db-stop` stops the local PostgreSQL. Its data lives under `.nix-data/` in the repo.
 
 > Building the packages runs `bun install` against the npm registry inside a fixed-output derivation, so builds need network access on first run. Native dependencies differ per platform, so each one has its own hash in `nix/hashes.json` (linux × x86_64/arm64 and Apple Silicon macOS). The `nix-hashes` workflow recomputes and commits them whenever `bun.lock`/`package.json` change, so dependency bumps don't break the flake. Intel macOS (`x86_64-darwin`) was retired from nixpkgs and is not supported.
+
+## Project Settings And Rules
+
+Each project has a **Settings** page for its team; a customer's contacts have none. It has four sections:
+
+- **General**: the name, description and status; the owner, who alone may hand the project to someone else; **Archive**, which hides the project from the lists and stops its rules until it is unarchived; and **Delete**, which asks for the project name first.
+- **Repositories**: the GitHub repositories the project links issues and pull requests from. Several can be linked and one is the default, so a bare `#123` means its issue. The default visibility for new links is set here. Any repository can be made the default, have its visibility changed, or be removed; task links to it stay on their tasks.
+- **Rules**: the automation rules described below.
+- **Custom fields**.
+
+### Rules
+
+A rule says what happens on a board: when its trigger happens and every condition holds, its actions run. Rules are built in **Settings → Rules**. Each one shows its plain sentence, an on/off switch, and its run log, which says for each run whether it ran, failed or was stopped.
+
+| Part | Choices |
+| --- | --- |
+| Triggers | a task is added, moved to a column, completed, reopened, assigned, given a due date, or its due date passes; a comment is added; a linked pull request is merged, closed, or has failing checks |
+| Conditions (up to 10) | the task is in a column, is assigned to someone or to nobody, has a label, has or has no due date, or has a visibility |
+| Actions (up to 20) | move to a column, assign, unassign, set the due date to a number of days from now, complete, reopen, add a label, add a comment, create a subtask, set the visibility |
+
+- A project holds up to 50 rules. Only the project owner can use the set-visibility action.
+- The due-date trigger fires once per task and due date, once that date is behind us. The check runs every 15 minutes (`DUE_RULES_INTERVAL_MS` changes that for tests).
+- Rules run for changes made in the app and through the agent tools.
+- Loop protection: a chain of rule steps stops after five steps, and a rule never runs twice on the same task within one chain. A stopped run is logged with the steps that would have repeated.
+- Deleting a rule asks first and deletes its run log with it.
+
+Agents get `list_rules`, `create_rule`, `update_rule` and `list_rule_runs`. A rule is checked the same way in Settings and by the agent tools, and a refused rule comes back with the reasons.
 
 ## Connect An AI Agent
 

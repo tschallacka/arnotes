@@ -127,6 +127,7 @@ function dropField(fieldId: string) {
         />
         <KanbanProjectRulesSettings
           v-else-if="section === 'rules'"
+          :project-id="projectId"
           class="mt-4"
         />
         <section

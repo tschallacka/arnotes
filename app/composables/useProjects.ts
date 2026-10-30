@@ -18,6 +18,9 @@ export interface Project {
   name: string
   description?: string
   status?: 'on_track' | 'at_risk' | 'off_track' | null
+  // Who the project is recorded under (a team member) and when it was archived (NULL = active).
+  userId?: string
+  archivedAt?: number | null
   // The dashboard widgets this project shows, in order; null is the default set.
   dashboardWidgets?: string[] | null
   customerId?: string | null
@@ -156,6 +159,8 @@ export interface GithubBadge {
 const _projects = ref<Project[]>([])
 const _allTasks = ref<TaskSearchRow[]>([])
 const _activeProjectId = ref<string | null>(null)
+// The open project when the list no longer holds it (archived): its page still needs it.
+const _archivedActive = ref<Project | null>(null)
 const _board = ref<{ columns: ProjectColumn[], tasks: ProjectTask[] } | null>(null)
 // Update counts live beside the board: task PUT responses do not carry them, so
 // folding them into the task would wipe the badge on every edit.
@@ -313,6 +318,19 @@ function reindexSearch() {
 
 // ─── helpers ────────────────────────────────────────────────
 
+// Keeps the open project on its page once it has left the list (archived).
+async function refreshArchivedActive(id: string) {
+  if (_projects.value.some(p => p.id === id)) {
+    _archivedActive.value = null
+    return
+  }
+  try {
+    _archivedActive.value = await $fetch<Project>(`/api/projects/${id}`)
+  } catch {
+    _archivedActive.value = null
+  }
+}
+
 function upsertProject(project: Project) {
   const idx = _projects.value.findIndex(p => p.id === project.id)
   if (idx < 0) {
@@ -426,7 +444,7 @@ export function initProjectsStore(
 
 export function useProjects() {
   const activeProject = computed(() =>
-    _projects.value.find(p => p.id === _activeProjectId.value) ?? null
+    _projects.value.find(p => p.id === _activeProjectId.value) ?? (_archivedActive.value?.id === _activeProjectId.value ? _archivedActive.value : null)
   )
   // The server enforces this; the board only uses it to stop offering what a
   // customer contact would be refused.
@@ -451,6 +469,7 @@ export function useProjects() {
       $fetch<TaskSearchRow[]>('/api/tasks')
     ])
     _projects.value = projects
+    if (_activeProjectId.value) await refreshArchivedActive(_activeProjectId.value)
     _allTasks.value = tasks
     reindexSearch()
   }
@@ -519,6 +538,30 @@ export function useProjects() {
     return updated
   }
 
+  // Archiving leaves the lists and the search index; the open board keeps its row so its page still works.
+  async function archiveProject(id: string) {
+    const previous = _projects.value.find(p => p.id === id)
+    const updated = await $fetch<Project>(`/api/projects/${id}/archive`, { method: 'POST', headers: realtimeHeaders() })
+    _projects.value = _projects.value.filter(p => p.id !== id)
+    _allTasks.value = _allTasks.value.filter(t => t.projectId !== id)
+    reindexSearch()
+    if (_activeProjectId.value === id) _archivedActive.value = { ...previous, ...updated }
+    return updated
+  }
+
+  async function unarchiveProject(id: string) {
+    const updated = await $fetch<Project>(`/api/projects/${id}/unarchive`, { method: 'POST', headers: realtimeHeaders() })
+    await syncProjects()
+    return updated
+  }
+
+  // The owner is a team member; visibility comes from the team, so the list is only updated.
+  async function setProjectOwner(id: string, ownerId: string) {
+    const updated = await $fetch<Project>(`/api/projects/${id}`, { method: 'PUT', headers: realtimeHeaders(), body: { ownerId } })
+    upsertProject(updated)
+    return updated
+  }
+
   async function deleteProject(id: string) {
     await $fetch(`/api/projects/${id}`, { method: 'DELETE', headers: realtimeHeaders() })
     _projects.value = _projects.value.filter(p => p.id !== id)
@@ -582,6 +625,7 @@ export function useProjects() {
         _trashedCount.value = 0
       }
       _activeProjectId.value = id
+      await refreshArchivedActive(id)
       const [board, people] = await Promise.all([
         $fetch<BoardPayload>(boardUrl(id)),
         // The picker is not worth failing the board over.
@@ -1019,6 +1063,9 @@ export function useProjects() {
     renameProject,
     updateProjectDetails,
     updateProjectSharing,
+    archiveProject,
+    unarchiveProject,
+    setProjectOwner,
     deleteProject,
     loadBoard,
     fetchBoard,
