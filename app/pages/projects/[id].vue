@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { ProjectTask } from '~/composables/useProjects'
 import { taskCountLabel, terminalColumnIds } from '#shared/utils/board'
+import { MISSING_TASK_NOTE, parseTaskAddress, taskAddress } from '#shared/utils/taskAddress'
 import { queryForView } from '~/utils/projectViewQuery'
 
-definePageMeta({ layout: 'app' })
+definePageMeta({ layout: 'app', key: route => route.params.id as string })
 
 const route = useRoute()
 const { sidebarOpen } = useSidebar()
@@ -28,7 +29,8 @@ const {
   trashedCount,
   toggleShowTrashed,
   isTrashed,
-  crewBoard
+  crewBoard,
+  subtasks
 } = useProjects()
 
 const projectId = computed(() => route.params.id as string)
@@ -57,7 +59,7 @@ const tabViews = computed(() => visibleViews.value.filter(v => v.key !== 'settin
 const view = computed(() => visibleViews.value.filter(v => v.key !== 'office').find(v => v.key === route.query.view)?.key ?? 'board')
 
 function setView(key: string) {
-  navigateTo({ path: route.path, query: queryForView(route.query, key) }, { replace: true })
+  navigateTo({ path: window.location.pathname, query: queryForView(route.query, key) }, { replace: true })
 }
 
 // The office is a page of its own, not a view of the board: the tab leads there.
@@ -123,21 +125,80 @@ async function switchToHintTeam() {
 
 // ─── Task panel ────────────────────────────────────────────
 
+// The open task is named by the address, /projects/<board>/<task>. Opening one writes that address with
+// pushState, so the router does not see it; Back and Forward are followed by the popstate listener below.
+// Only the person's own close steps back in history. A refresh of the board, or a task that has gone,
+// replaces the address with the board's instead.
 const drawerTaskId = ref<string | null>(null)
 
-// Deep link ?task=<id> (global search) opens the panel.
-watch(() => route.query.task, (taskId) => {
-  drawerTaskId.value = typeof taskId === 'string' && taskId ? taskId : null
-}, { immediate: true })
+// The one place the open task is set: a click, a direct visit, Back and Forward and the router all go through it.
+function setOpenTask(taskId: string | null) {
+  drawerTaskId.value = taskId || null
+}
+setOpenTask(typeof route.params.task === 'string' ? route.params.task : null)
 
-function closeDrawer() {
-  drawerTaskId.value = null
-  if (route.query.task) navigateTo({ path: route.path, replace: true })
+function openTask(taskId: string) {
+  if (drawerTaskId.value === taskId) return
+  setOpenTask(taskId)
+  history.pushState({ taskPanel: true }, '', taskAddress(projectId.value, taskId))
 }
 
-const drawerTask = computed<ProjectTask | null>(() =>
-  drawerTaskId.value ? board.value?.tasks.find(t => t.id === drawerTaskId.value) ?? null : null
-)
+// Replaces an address that still names a task with the board's own, without a history step.
+function leaveTask() {
+  if (parseTaskAddress(window.location.pathname)) {
+    navigateTo({ path: `/projects/${projectId.value}`, query: route.query }, { replace: true })
+  }
+}
+
+// The person closed the panel: step back when the panel opened that entry, otherwise replace the address.
+function closeDrawer() {
+  const opened = history.state?.taskPanel === true
+  setOpenTask(null)
+  if (opened) history.back()
+  else leaveTask()
+}
+
+function onPopState() {
+  const address = parseTaskAddress(window.location.pathname)
+  setOpenTask(address?.boardId === projectId.value ? address.taskId : null)
+}
+onMounted(() => window.addEventListener('popstate', onPopState))
+onBeforeUnmount(() => window.removeEventListener('popstate', onPopState))
+
+// A direct visit to the task's address opens the panel, and so does the router following a change.
+watch(() => route.params.task, (taskId) => {
+  setOpenTask(typeof taskId === 'string' ? taskId : null)
+})
+
+// An older ?task= link opens its task too, and its address is rewritten to the task's own.
+function rewriteTaskQuery(taskId: string) {
+  const query = { ...route.query }
+  delete query.task
+  navigateTo({ path: taskAddress(projectId.value, taskId), query }, { replace: true })
+}
+onMounted(() => {
+  if (typeof route.query.task === 'string' && route.query.task) rewriteTaskQuery(route.query.task)
+})
+watch(() => route.query.task, (taskId) => {
+  if (typeof taskId === 'string' && taskId) rewriteTaskQuery(taskId)
+})
+
+// The open task, whether it is a top-level card or a subtask (subtasks are kept apart from the board's tasks).
+const drawerTask = computed<ProjectTask | null>(() => {
+  if (!drawerTaskId.value) return null
+  return board.value?.tasks.find(t => t.id === drawerTaskId.value)
+    ?? subtasks.value.find(t => t.id === drawerTaskId.value)
+    ?? null
+})
+
+// A task the person cannot see, or that is gone after a refresh, leaves the board open with a short note.
+// This runs on a background refresh too, so it replaces the address rather than stepping back.
+watch([drawerTaskId, board], ([taskId, loaded]) => {
+  if (!taskId || !loaded || drawerTask.value) return
+  toast.add({ title: MISSING_TASK_NOTE, icon: 'i-lucide-info', duration: 5000 })
+  setOpenTask(null)
+  leaveTask()
+})
 
 // ─── Project name (inline rename) ──────────────────────────
 
@@ -598,19 +659,19 @@ useSeoMeta({
         <KanbanBoard
           v-else-if="view === 'board'"
           :project-id="projectId"
-          @open-task="drawerTaskId = $event"
+          @open-task="openTask($event)"
         />
         <KanbanProjectListView
           v-else-if="view === 'list'"
-          @open-task="drawerTaskId = $event"
+          @open-task="openTask($event)"
         />
         <KanbanProjectTimelineView
           v-else-if="view === 'timeline'"
-          @open-task="drawerTaskId = $event"
+          @open-task="openTask($event)"
         />
         <KanbanProjectCalendarView
           v-else-if="view === 'calendar'"
-          @open-task="drawerTaskId = $event"
+          @open-task="openTask($event)"
         />
         <KanbanProjectDashboardView v-else-if="view === 'dashboard'" />
         <KanbanProjectMessagesView
@@ -629,7 +690,7 @@ useSeoMeta({
         />
         <KanbanProjectFilesView
           v-else
-          @open-task="drawerTaskId = $event"
+          @open-task="openTask($event)"
         />
       </template>
     </div>
